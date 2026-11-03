@@ -22,13 +22,14 @@ A server-side Fabric 1.21.1 mod that lets Smart Parrots learn and imitate consen
 - Natural multi-word utterances are stored as their own phrase recordings. The newest clean owner recording has priority over a phrase assembled from fragments or one containing visitor audio.
 - The mod also combines recent short utterances into phrase candidates (up to 4 fragments and 8 words). The suffix `(3)` means the phrase was built from three separate utterances; `(2)` means two. `E` marks a phrase where at least one recording came from someone other than the parrot's owner.
 - If the owner later says the whole phrase fluently, that one-piece owner recording replaces the lower-priority assembled/visitor version. A later clean owner sequence can also replace an `E` candidate.
-- Learned phrases have no age-based expiration. The store has a defensive ceiling of 20,000 distinct phrases per parrot; after that, existing phrases are kept and new distinct phrase entries are not added.
+- Learned phrases have no age-based expiration. The store has a defensive ceiling of 20,000 distinct phrases and 40 MB of phrase audio per parrot; when a ceiling is reached, existing phrases are kept and new distinct phrase entries are not added.
 
 ## Commands
 
 - `/parrotdebug summon` — spawns a test Smart Parrot (permission level 2).
 - `/parrotdebug words` — lists words learned by the nearest Smart Parrot.
 - `/parrotdebug phrases` — lists up to 40 recently updated phrases and their fragment / visitor markers.
+- `/parrotdebug suggestions` — displays 84 phrase ideas grouped as a teaching prompt list. They are not pre-recorded voice lines; the parrot must hear a consenting player say them.
 - `/parrotdebug repeat` — plays the nearest Smart Parrot's latest saved phrase.
 - `/parrotdebug repeatword <word>` — plays a saved word, preferring the tamed owner's voice.
 - `/parrotdebug tryphrase <phrase>` — plays an exact saved phrase if one exists; otherwise composes it from the parrot's saved word recordings. Diacritics are ignored.

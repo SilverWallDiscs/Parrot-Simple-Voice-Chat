@@ -9,8 +9,8 @@ package dev.silverwall.parrotsvc.voice;
  */
 public final class ParrotVoiceProcessor {
     private static final int SAMPLE_RATE = 48_000;
-    private static final double MIN_PARROT_PITCH = 1.70; // tight variation around the 1.8x target
-    private static final double MAX_PARROT_PITCH = 1.90; // upper bound avoids overly fast playback
+    private static final double MIN_PARROT_PITCH = 1.40; // slower, subtle parrot imitation
+    private static final double MAX_PARROT_PITCH = 1.60; // upper bound keeps the phrase more intelligible
     private static final double VIBRATO_HZ = 6.2;
     private static final double VIBRATO_DEPTH_SAMPLES = 1.6;
     private static final double FLUTTER_HZ = 17.0;

@@ -43,6 +43,7 @@ public final class ParrotMemoryStore {
     private static final int MAX_PHRASE_SECONDS = 8;
     private static final int MAX_WORDS_PER_FILE = 5000;
     private static final int MAX_PHRASES_PER_FILE = 20000;
+    private static final long MAX_PHRASE_AUDIO_BYTES = 40L * 1024L * 1024L;
     private static final int MAX_BLOB_BYTES = 1_000_000;
     private static final long MAX_FILE_BYTES = 64L * 1024L * 1024L;
     private static final int SEPARATOR_SAMPLES = SOURCE_RATE / 20;
@@ -160,12 +161,21 @@ public final class ParrotMemoryStore {
                 while (phraseIterator.hasNext()) {
                     PhraseRecording phrase = phraseIterator.next().getValue();
                     if (phrase.contributors.contains(playerId)) {
+                        Arrays.fill(phrase.audio, (byte) 0);
                         phraseIterator.remove();
                         changed = true;
                     }
                 }
 
-                if (memory.fragments.removeIf(fragment -> fragment.speakerId.equals(playerId))) changed = true;
+                var fragmentIterator = memory.fragments.iterator();
+                while (fragmentIterator.hasNext()) {
+                    Fragment fragment = fragmentIterator.next();
+                    if (fragment.speakerId.equals(playerId)) {
+                        for (StoredWord word : fragment.words) Arrays.fill(word.audio, (byte) 0);
+                        fragmentIterator.remove();
+                        changed = true;
+                    }
+                }
                 if (changed) save(parrotId, memory);
             }
         } catch (IOException exception) {
@@ -194,7 +204,14 @@ public final class ParrotMemoryStore {
             byte[] encoded = encodeAudio(samples);
             if (encoded.length == 0) continue;
             List<WordRecording> recordings = memory.words.computeIfAbsent(word, ignored -> new ArrayList<>());
-            recordings.removeIf(recording -> recording.speakerId.equals(speakerId));
+            var existingIterator = recordings.iterator();
+            while (existingIterator.hasNext()) {
+                WordRecording existing = existingIterator.next();
+                if (existing.speakerId.equals(speakerId)) {
+                    Arrays.fill(existing.audio, (byte) 0);
+                    existingIterator.remove();
+                }
+            }
             if (recordings.size() >= MAX_CLIPS_PER_WORD) {
                 int removeAt = 0;
                 for (int j = 0; j < recordings.size(); j++) {
@@ -203,9 +220,10 @@ public final class ParrotMemoryStore {
                         break;
                     }
                 }
-                recordings.remove(removeAt);
+                WordRecording removed = recordings.remove(removeAt);
+                Arrays.fill(removed.audio, (byte) 0);
             }
-            recordings.add(new WordRecording(speakerId, encoded));
+            recordings.add(new WordRecording(speakerId, encoded.clone()));
             fragmentWords.add(new StoredWord(word, encoded));
         }
         if (fragmentWords.isEmpty()) return;
@@ -278,12 +296,24 @@ public final class ParrotMemoryStore {
                 key, audio, fragments, foreign, fluent, Set.copyOf(contributors), now);
         PhraseRecording existing = memory.phrases.get(key);
         if (existing == null && memory.phrases.size() >= MAX_PHRASES_PER_FILE) {
-            LOGGER.warn("Smart Parrot phrase limit reached for {}; keeping existing phrases", key);
+            Arrays.fill(audio, (byte) 0);
+            LOGGER.warn("Smart Parrot phrase-count limit reached; keeping existing phrases");
             return;
         }
-        if (existing == null || score(candidate) < score(existing)
-                || (score(candidate) == score(existing) && candidate.updatedAt > existing.updatedAt)) {
+        boolean preferred = existing == null || score(candidate) < score(existing)
+                || (score(candidate) == score(existing) && candidate.updatedAt > existing.updatedAt);
+        if (preferred) {
+            long currentBytes = memory.phrases.values().stream().mapToLong(phrase -> phrase.audio.length).sum();
+            long previousBytes = existing == null ? 0 : existing.audio.length;
+            if (currentBytes - previousBytes + audio.length > MAX_PHRASE_AUDIO_BYTES) {
+                Arrays.fill(audio, (byte) 0);
+                LOGGER.warn("Smart Parrot phrase-audio storage limit reached; keeping existing phrases");
+                return;
+            }
+            if (existing != null) Arrays.fill(existing.audio, (byte) 0);
             memory.phrases.put(key, candidate);
+        } else {
+            Arrays.fill(audio, (byte) 0);
         }
     }
 
@@ -519,6 +549,11 @@ public final class ParrotMemoryStore {
         } catch (IOException | RuntimeException exception) {
             LOGGER.warn("Could not load Smart Parrot memory {}: {}", parrotId, exception.getMessage());
             return new ParrotMemory();
+        }
+        while (memory.words.size() > maxWordsPerParrot) {
+            String oldest = memory.words.keySet().iterator().next();
+            List<WordRecording> removed = memory.words.remove(oldest);
+            if (removed != null) removed.forEach(recording -> Arrays.fill(recording.audio, (byte) 0));
         }
         return memory;
     }

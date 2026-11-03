@@ -9,6 +9,7 @@ A Fabric 1.21.1 mod that lets Smart Parrots learn and imitate nearby players thr
 - `/parrotvoice status` — displays the Minecraft client language, speech-model status and consent state.
 - `/parrotdebug repeat` — asks the nearest Smart Parrot to repeat its latest learned phrase (permission level 2).
 - `/parrotdebug words` — lists words learned by the nearest Smart Parrot.
+- `/parrotdebug tryphrase <phrase>` — composes and plays a phrase using the nearest Smart Parrot's latest recordings for every word. Every word must already be learned by that parrot; unknown words are reported.
 - `/parrotdebug repeatword <word>` — asks the nearest Smart Parrot to repeat one learned word.
 - `/parrotdebug info` — reports received packets, active captures, RAM phrases, word clips, consenting players and speech-model status.
 - Decodes incoming Simple Voice Chat Opus microphone frames to 48 kHz mono PCM.
@@ -29,6 +30,7 @@ A Fabric 1.21.1 mod that lets Smart Parrots learn and imitate nearby players thr
 5. Enable learning with `/parrotvoice consent`.
 6. Stand within 12 blocks of the parrot and say a short Spanish phrase, for example: "tengo mucha hambre".
 7. Use `/parrotdebug words` to inspect recognized words, then `/parrotdebug repeatword tengo` to hear one word repeated by the parrot.
+8. Test composition with `/parrotdebug tryphrase tengo mucha hambre quiero comida`. The parrot uses the newest recording it has for each word and inserts a short pause between words. Every word must be present in its vocabulary.
 
 The model status is available through `/parrotvoice status` and `/parrotdebug info`. If the model is still downloading/loading, wait for the ready message before expecting words to be learned.
 

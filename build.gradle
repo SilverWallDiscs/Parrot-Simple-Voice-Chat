@@ -22,6 +22,11 @@ dependencies {
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
     modImplementation "de.maxhenkel.voicechat:voicechat-api:${project.voicechat_api_version}"
+
+    implementation "com.alphacephei:vosk:0.3.45"
+    implementation "net.java.dev.jna:jna:5.7.0"
+    include "com.alphacephei:vosk:0.3.45"
+    include "net.java.dev.jna:jna:5.7.0"
 }
 
 processResources {

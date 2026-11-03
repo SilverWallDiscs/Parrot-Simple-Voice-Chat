@@ -229,7 +229,6 @@ public final class VoiceMemory {
 
         UUID parrotId = parrot.getUuid();
         UUID entityOwnerId = parrot.getOwnerUuid();
-        play(parrot, samples, api);
 
         String clientLanguage = speaker.getClientOptions().language();
         if (SpeechRecognitionService.supportsLanguage(clientLanguage)) {
@@ -255,6 +254,30 @@ public final class VoiceMemory {
                                         parrotId, speakerId, entityOwnerId, words, wordAudio, phraseForSegmentation);
                                 LOGGER.info("Smart Parrot {} learned {} word(s) from {}",
                                         parrotId, words.size(), speakerId);
+
+                                // Prefer a clean saved phrase. If the current speaker is a visitor,
+                                // fall back to per-word playback so owner recordings win each word.
+                                short[] parrotReply = null;
+                                ParrotMemoryStore.PhrasePlayback savedPhrase =
+                                        ParrotMemoryStore.getPhrase(parrotId, String.join(" ", words));
+                                if (savedPhrase != null && !savedPhrase.foreign()
+                                        && savedPhrase.samples() != null) {
+                                    parrotReply = savedPhrase.samples();
+                                } else {
+                                    if (savedPhrase != null && savedPhrase.samples() != null) {
+                                        Arrays.fill(savedPhrase.samples(), (short) 0);
+                                    }
+                                    parrotReply = ParrotMemoryStore.composeWords(parrotId, words);
+                                }
+                                if (parrotReply != null) {
+                                    try {
+                                        if (api != null && parrot.isAlive()) {
+                                            play(parrot, parrotReply, api);
+                                        }
+                                    } finally {
+                                        Arrays.fill(parrotReply, (short) 0);
+                                    }
+                                }
                             }
                         } finally {
                             wordAudio.forEach(clip -> Arrays.fill(clip, (short) 0));

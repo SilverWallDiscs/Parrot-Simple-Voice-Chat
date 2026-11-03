@@ -56,6 +56,7 @@ public final class SmartParrotVoicePlugin implements VoicechatPlugin {
 
     public static void shutdown() {
         VoiceMemory.clear();
+        SpeechRecognitionService.shutdown();
         voicechatApi = null;
     }
 }

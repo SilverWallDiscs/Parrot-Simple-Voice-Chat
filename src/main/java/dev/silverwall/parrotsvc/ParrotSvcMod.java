@@ -30,24 +30,23 @@ public final class ParrotSvcMod implements ModInitializer {
 
     private static final java.util.List<String> PHRASE_SUGGESTIONS = java.util.List.of(
             "tengo hambre", "tengo mucha hambre", "quiero comer", "quiero comida", "dame comida",
-            "tengo sed", "quiero agua", "dame agua", "quiero una fruta", "esto esta rico", "quiero mas",
-            "hola", "hola amigo", "buenos dias", "buenas noches", "como estas", "estoy bien",
-            "que haces", "donde estas", "ven aqui", "mirame", "escuchame", "vamos juntos",
-            "que bonito", "te quiero", "estoy feliz", "estoy triste", "tengo miedo", "estoy aburrido",
-            "estoy cansado", "quiero dormir", "tengo sueno", "estoy enojado", "no me gusta",
-            "eso me gusta", "que divertido", "soy inteligente", "soy un loro inteligente",
-            "que es eso", "que estas haciendo", "que paso", "quien eres", "quiero investigar",
-            "vamos a mirar", "eso es interesante", "he encontrado algo", "mira lo que encontre",
-            "no entiendo", "ya entendi", "dejame pensar", "quiero volar", "vamos a volar",
-            "quiero jugar", "juega conmigo", "quiero compania", "no te vayas", "espera por mi",
-            "sigeme", "vamos a casa", "quiero descansar", "dejame tranquilo", "no me molestes",
+            "tengo sed", "quiero agua", "dame agua", "quiero una fruta", "esto está rico", "quiero más",
+            "hola", "hola amigo", "buenos días", "buenas noches", "cómo estás", "estoy bien",
+            "qué haces", "dónde estás", "ven aquí", "mírame", "escúchame", "vamos juntos",
+            "qué bonito", "te quiero", "estoy feliz", "estoy triste", "tengo miedo", "estoy aburrido",
+            "estoy cansado", "quiero dormir", "tengo sueño", "estoy enojado", "no me gusta",
+            "eso me gusta", "qué divertido", "soy inteligente", "soy un loro inteligente",
+            "qué es eso", "qué estás haciendo", "qué pasó", "quién eres", "quiero investigar",
+            "vamos a mirar", "eso es interesante", "he encontrado algo", "mira lo que encontré",
+            "no entiendo", "ya entendí", "déjame pensar", "quiero volar", "vamos a volar",
+            "quiero jugar", "juega conmigo", "quiero compañía", "no te vayas", "espera por mí",
+            "sígueme", "vamos a casa", "quiero descansar", "déjame tranquilo", "no me molestes",
             "no fui yo", "yo no hice nada", "fue culpa tuya", "tengo un secreto",
-            "no se lo digas a nadie", "soy inocente", "que verguenza", "otra vez tu",
-            "soy el jefe", "hola mi dueno", "te estaba esperando", "te extrane", "volviste",
-            "quedate conmigo", "quiero estar contigo", "vamos a pasear", "gracias amigo",
-            "eres mi mejor amigo", "me gusta estar contigo", "hasta manana", "cuidate mucho"
+            "no se lo digas a nadie", "soy inocente", "qué vergüenza", "otra vez tú",
+            "soy el jefe", "hola mi dueño", "te estaba esperando", "te extrañé", "volviste",
+            "quédate conmigo", "quiero estar contigo", "vamos a pasear", "gracias amigo",
+            "eres mi mejor amigo", "me gusta estar contigo", "hasta mañana", "cuídate mucho"
     );
-
     @Override
     public void onInitialize() {
         ServerTickEvents.END_SERVER_TICK.register(SmartParrotVoicePlugin::tick);

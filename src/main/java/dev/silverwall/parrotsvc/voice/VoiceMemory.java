@@ -578,11 +578,11 @@ public final class VoiceMemory {
             return "";
         }
         // Ignore Spanish accent marks for storage and matching, but preserve ñ as a letter.
-        String lower = word.toLowerCase(Locale.ROOT).trim().replace("ñ", "\\uE000");
+        String lower = word.toLowerCase(Locale.ROOT).trim().replace("ñ", "\uE000");
         return Normalizer.normalize(lower, Normalizer.Form.NFD)
-                .replaceAll("\\\\p{M}+", "")
-                .replace("\\uE000", "ñ")
-                .replaceAll("^[^\\\\p{L}\\\\p{N}]+|[^\\\\p{L}\\\\p{N}]+$", "");
+                .replaceAll("\\p{M}+", "")
+                .replace("\uE000", "ñ")
+                .replaceAll("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$", "");
     }
 
     private static void play(ParrotEntity parrot, short[] originalSamples, VoicechatServerApi api) {

@@ -1,6 +1,6 @@
 # Parrot + Simple Voice Chat
 
-A Fabric 1.21.1 experiment that lets marked Smart Parrots learn and repeat nearby players through Simple Voice Chat.
+A Fabric 1.21.1 experiment that lets marked Smart Parrots learn and repeat nearby players through Simple Voice Chat. The mod is server-side in functionality, but safe to install on clients too (client optional).
 
 ## Current prototype
 
@@ -23,6 +23,6 @@ This milestone learns and replays complete phrases. It does not yet recognize sp
 
 ## Build and dependencies
 
-Requires Java 21, Gradle 8.12+, Minecraft 1.21.1 and Fabric. Install Parrot + Simple Voice Chat and Fabric API on the server. Players only need Simple Voice Chat on their clients; this mod is server-only.
+Requires Java 21, Gradle 8.12+, Minecraft 1.21.1 and Fabric. Install Parrot + Simple Voice Chat, Fabric API and Simple Voice Chat on the server. Players need Simple Voice Chat on their clients to hear the parrot. Parrot + Simple Voice Chat can also be installed on clients, but it is not required; no client-side copy is needed for the server features.
 
 Simple Voice Chat API 2.6.25 is loaded through the official voicechat entrypoint.

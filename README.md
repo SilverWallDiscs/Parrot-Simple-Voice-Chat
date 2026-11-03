@@ -29,7 +29,7 @@ A server-side Fabric 1.21.1 mod that lets Smart Parrots learn and imitate consen
 - `/parrotdebug summon` — spawns a test Smart Parrot (permission level 2).
 - `/parrotdebug words` — lists words learned by the nearest Smart Parrot.
 - `/parrotdebug phrases` — lists up to 40 recently updated phrases and their fragment / visitor markers.
-- `/parrotdebug suggestions` — displays 84 phrase ideas grouped as a teaching prompt list. They are not pre-recorded voice lines; the parrot must hear a consenting player say them.
+- `/parrotdebug suggestions` — displays 83 phrase ideas grouped as a teaching prompt list. They are not pre-recorded voice lines; the parrot must hear a consenting player say them.
 - `/parrotdebug repeat` — plays the nearest Smart Parrot's latest saved phrase.
 - `/parrotdebug repeatword <word>` — plays a saved word, preferring the tamed owner's voice.
 - `/parrotdebug tryphrase <phrase>` — plays an exact saved phrase if one exists; otherwise composes it from the parrot's saved word recordings. Diacritics are ignored.

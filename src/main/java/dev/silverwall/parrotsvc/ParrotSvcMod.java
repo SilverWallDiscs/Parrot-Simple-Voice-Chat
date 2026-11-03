@@ -17,6 +17,7 @@ import net.minecraft.entity.passive.ParrotEntity;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.text.ClickEvent;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import org.slf4j.Logger;
@@ -184,7 +185,7 @@ public final class ParrotSvcMod implements ModInitializer {
     }
 
     private static void sendConsentPrompt(ServerPlayerEntity player) {
-        Text message = Text.literal(
+        MutableText message = Text.literal(
                 "§e¿Quieres dar consentimiento para que §bParrot + Simple Voice Chat§e utilice tu voz para dar más vida a los loros de Minecraft? Tu voz se procesará para que aprendan palabras y frases y puedan repetirlas. Las grabaciones se guardarán comprimidas en la memoria individual del loro y seguirán disponibles aunque te desconectes. Puedes cambiar tu decisión con /parrotvoice revoke.\n");
         message.append(Text.literal("[Sí]").styled(style -> style
                 .withColor(Formatting.GREEN)

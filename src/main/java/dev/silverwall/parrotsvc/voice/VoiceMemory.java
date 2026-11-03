@@ -238,7 +238,7 @@ public final class VoiceMemory {
                 return;
             }
 
-            short[] parrotVoice = raisePitch(originalSamples);
+            short[] parrotVoice = ParrotVoiceProcessor.process(originalSamples);
             AudioPlayer audioPlayer = api.createAudioPlayer(channel, encoder, parrotVoice);
             OpusEncoder finalEncoder = encoder;
             EntityAudioChannel finalChannel = channel;
@@ -261,24 +261,6 @@ public final class VoiceMemory {
         }
     }
 
-    /**
-     * Simple resampling raises the voice by about four semitones. It intentionally
-     * gives the familiar faster, higher parrot sound without storing another file.
-     */
-    private static short[] raisePitch(short[] input) {
-        int outputLength = Math.max(1, (int) (input.length / PITCH_RATIO));
-        short[] output = new short[outputLength];
-        for (int i = 0; i < outputLength; i++) {
-            float sourcePosition = i * PITCH_RATIO;
-            int left = Math.min((int) sourcePosition, input.length - 1);
-            int right = Math.min(left + 1, input.length - 1);
-            float fraction = sourcePosition - left;
-            float sample = input[left] + (input[right] - input[left]) * fraction;
-            float vibrato = 1.0F + (float) Math.sin(i * (2.0 * Math.PI * 6.5 / SAMPLE_RATE)) * 0.025F;
-            output[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, sample * vibrato));
-        }
-        return output;
-    }
 
     public static void onPlayerDisconnect(UUID playerId) {
         CONSENTING.remove(playerId);

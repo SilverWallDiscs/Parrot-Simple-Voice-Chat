@@ -27,8 +27,10 @@ public final class ParrotSvcMod implements ModInitializer {
     @Override
     public void onInitialize() {
         ServerTickEvents.END_SERVER_TICK.register(SmartParrotVoicePlugin::tick);
-        ServerLifecycleEvents.SERVER_STARTED.register(server ->
-                SpeechRecognitionService.initialize(FabricLoader.getInstance().getConfigDir()));
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            VoiceMemory.initialize(FabricLoader.getInstance().getConfigDir());
+            SpeechRecognitionService.initialize(FabricLoader.getInstance().getConfigDir());
+        });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> SmartParrotVoicePlugin.shutdown());
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
                 VoiceMemory.onPlayerDisconnect(handler.player.getUuid()));
@@ -101,7 +103,8 @@ public final class ParrotSvcMod implements ModInitializer {
                                     + SmartParrotVoicePlugin.getReceivedPacketCount()
                                     + " §7| §fActive captures: §e" + VoiceMemory.getActiveSessionCount()
                                     + " §7| §fRAM phrases: §e" + VoiceMemory.getLearnedClipCount()
-                                    + " §7| §fRAM word clips: §e" + VoiceMemory.getLearnedWordCount()
+                                    + " §7| §fRAM words: §e" + VoiceMemory.getLearnedWordCount()
+                                    + "/" + VoiceMemory.getMaxWordsPerParrot()
                                     + " §7| §fConsenting players: §e" + VoiceMemory.getConsentingPlayerCount()
                                     + " §7| §fSpeech model: §e" + SpeechRecognitionService.getStatus()), false);
                     return Command.SINGLE_SUCCESS;

@@ -12,7 +12,14 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.text.Normalizer;
 import java.util.Map;
+import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.entity.passive.ParrotEntity;
@@ -38,8 +45,11 @@ public final class VoiceMemory {
     private static final int MAX_ACTIVE_SESSIONS = 32;
     private static final int MAX_STORED_CLIPS = 64;
     private static final long MAX_STORED_SAMPLES = 2_000_000L;
-    private static final int MAX_STORED_WORD_CLIPS = 256;
-    private static final long MAX_STORED_WORD_SAMPLES = SAMPLE_RATE * 20L;
+    // 150 distinct words per parrot by default; the global audio budget is a
+    // final safety ceiling across all parrots (240 seconds of 48 kHz mono PCM).
+    private static final int DEFAULT_MAX_WORDS_PER_PARROT = 150;
+    private static final long MAX_STORED_WORD_SAMPLES = SAMPLE_RATE * 240L;
+    private static volatile int maxWordsPerParrot = DEFAULT_MAX_WORDS_PER_PARROT;
     private static final long END_OF_PHRASE_NANOS = 600_000_000L;
     private static final double LEARN_RADIUS = 12.0;
     private static final float PLAYBACK_DISTANCE = 20.0F;
@@ -53,6 +63,62 @@ public final class VoiceMemory {
     private static long storedWordSamples;
 
     private VoiceMemory() {
+    }
+
+    /** Loads the server-side word-memory limit, creating its config on first start. */
+    public static void initialize(Path configDir) {
+        Path directory = configDir.resolve("parrot-svc");
+        Path configFile = directory.resolve("voice-memory.properties");
+        Properties properties = new Properties();
+        boolean writeConfig = false;
+
+        try {
+            Files.createDirectories(directory);
+            if (Files.exists(configFile)) {
+                try (InputStream input = Files.newInputStream(configFile)) {
+                    properties.load(input);
+                }
+            } else {
+                writeConfig = true;
+            }
+
+            String key = "max-words-per-parrot";
+            String configured = properties.getProperty(key);
+            int parsed = DEFAULT_MAX_WORDS_PER_PARROT;
+            if (configured != null) {
+                try {
+                    parsed = Integer.parseInt(configured.trim());
+                } catch (NumberFormatException exception) {
+                    LOGGER.warn("Invalid {} value '{}' in {}; using {}", key, configured, configFile,
+                            DEFAULT_MAX_WORDS_PER_PARROT);
+                    writeConfig = true;
+                }
+            } else {
+                writeConfig = true;
+            }
+
+            int bounded = Math.max(1, Math.min(5000, parsed));
+            if (configured == null || !configured.trim().equals(Integer.toString(bounded))) {
+                properties.setProperty(key, Integer.toString(bounded));
+                writeConfig = true;
+            }
+            maxWordsPerParrot = bounded;
+
+            if (writeConfig) {
+                try (OutputStream output = Files.newOutputStream(configFile)) {
+                    properties.store(output, "Parrot + Simple Voice Chat voice memory settings");
+                }
+            }
+            LOGGER.info("Smart Parrot word memory limit: {} distinct words per parrot", maxWordsPerParrot);
+        } catch (IOException exception) {
+            maxWordsPerParrot = DEFAULT_MAX_WORDS_PER_PARROT;
+            LOGGER.warn("Could not load {}; using the default limit of {} words per parrot",
+                    configFile, DEFAULT_MAX_WORDS_PER_PARROT, exception);
+        }
+    }
+
+    public static int getMaxWordsPerParrot() {
+        return maxWordsPerParrot;
     }
 
     public static boolean toggleConsent(UUID playerId) {
@@ -457,13 +523,40 @@ public final class VoiceMemory {
 
         short[] copy = Arrays.copyOf(samples, samples.length);
         synchronized (LEARNED_WORDS) {
-            while (!LEARNED_WORDS.isEmpty()
-                    && (LEARNED_WORDS.size() >= MAX_STORED_WORD_CLIPS
-                    || storedWordSamples + copy.length > MAX_STORED_WORD_SAMPLES)) {
-                LearnedWord removed = LEARNED_WORDS.remove(0);
-                storedWordSamples -= removed.samples().length;
-                Arrays.fill(removed.samples(), (short) 0);
+            // Keep only the newest recording for a given normalized word and parrot.
+            for (int i = LEARNED_WORDS.size() - 1; i >= 0; i--) {
+                LearnedWord existing = LEARNED_WORDS.get(i);
+                if (existing.parrotId().equals(parrotId) && existing.word().equals(word)) {
+                    removeLearnedWordAt(i);
+                }
             }
+
+            int wordsForParrot = 0;
+            for (LearnedWord learned : LEARNED_WORDS) {
+                if (learned.parrotId().equals(parrotId)) {
+                    wordsForParrot++;
+                }
+            }
+            while (wordsForParrot >= maxWordsPerParrot) {
+                int oldestForParrot = -1;
+                for (int i = 0; i < LEARNED_WORDS.size(); i++) {
+                    if (LEARNED_WORDS.get(i).parrotId().equals(parrotId)) {
+                        oldestForParrot = i;
+                        break;
+                    }
+                }
+                if (oldestForParrot < 0) {
+                    break;
+                }
+                removeLearnedWordAt(oldestForParrot);
+                wordsForParrot--;
+            }
+
+            // Keep memory bounded across the whole server, even with many parrots.
+            while (!LEARNED_WORDS.isEmpty() && storedWordSamples + copy.length > MAX_STORED_WORD_SAMPLES) {
+                removeLearnedWordAt(0);
+            }
+
             if (copy.length <= MAX_STORED_WORD_SAMPLES) {
                 LEARNED_WORDS.add(new LearnedWord(parrotId, speakerId, word, copy));
                 storedWordSamples += copy.length;
@@ -473,12 +566,23 @@ public final class VoiceMemory {
         }
     }
 
+    /** Must be called while holding LEARNED_WORDS. */
+    private static void removeLearnedWordAt(int index) {
+        LearnedWord removed = LEARNED_WORDS.remove(index);
+        storedWordSamples -= removed.samples().length;
+        Arrays.fill(removed.samples(), (short) 0);
+    }
+
     private static String normalizeWord(String word) {
         if (word == null) {
             return "";
         }
-        return word.toLowerCase(Locale.ROOT).trim()
-                .replaceAll("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$", "");
+        // Ignore Spanish accent marks for storage and matching, but preserve ñ as a letter.
+        String lower = word.toLowerCase(Locale.ROOT).trim().replace("ñ", "\\uE000");
+        return Normalizer.normalize(lower, Normalizer.Form.NFD)
+                .replaceAll("\\\\p{M}+", "")
+                .replace("\\uE000", "ñ")
+                .replaceAll("^[^\\\\p{L}\\\\p{N}]+|[^\\\\p{L}\\\\p{N}]+$", "");
     }
 
     private static void play(ParrotEntity parrot, short[] originalSamples, VoicechatServerApi api) {

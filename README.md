@@ -14,11 +14,14 @@ A Fabric 1.21.1 mod that lets Smart Parrots learn and imitate nearby players thr
 - `/parrotdebug info` — reports received packets, active captures, RAM phrases, word clips, consenting players and speech-model status.
 - Decodes incoming Simple Voice Chat Opus microphone frames to 48 kHz mono PCM.
 - Uses the language sent in vanilla Minecraft client options. Spanish locales (`es_*`) use the Spanish model. English recognition is planned but is not included yet; other languages are not incorrectly fed to the Spanish model.
+- Stores learned words in lowercase without accent marks (while preserving `ñ`) so phrase tests match regardless of written accents.
 - Uses Vosk offline speech recognition with word timestamps to identify individual spoken Spanish words.
 - Converts the 48 kHz microphone audio to 16 kHz for Vosk, then cuts word clips from the original higher-quality audio using the recognized start/end times.
 - Adds small silence gaps inferred from incoming voice-packet timing so speech recognition can estimate word boundaries more accurately.
 - Automatically downloads the official small Spanish model on the first server start (about 39 MB) into `config/parrot-svc/models`. It is loaded asynchronously; server ticks are not blocked. The model is stored on disk, but player audio and learned clips stay in RAM.
-- Keeps phrase and word clips only in server RAM, with bounded memory and clip counts. Disabling consent, disconnecting, or stopping the server erases that player's active audio and learned clips.
+- Keeps phrase audio and word clips only in server RAM. Each Smart Parrot stores one, newest recording per distinct normalized word, with a default limit of 150 words per parrot. When full, the oldest word for that parrot is replaced. A separate global audio-memory ceiling bounds total memory across the server.
+- Creates `config/parrot-svc/voice-memory.properties` on first startup. Set `max-words-per-parrot=150` to change the limit (1–5000); restart the server after editing.
+- Learned audio is attributed to the player who supplied it. Disabling that player's consent or disconnecting erases their active capture and learned recordings; stopping the server erases all voice memory. The vocabulary and audio are not persisted to disk.
 - Replays phrases and individual words from the parrot's entity position through a Simple Voice Chat entity audio channel. Playback uses the parrot-like pitch and DSP chain.
 
 ## First Spanish test
@@ -30,7 +33,7 @@ A Fabric 1.21.1 mod that lets Smart Parrots learn and imitate nearby players thr
 5. Enable learning with `/parrotvoice consent`.
 6. Stand within 12 blocks of the parrot and say a short Spanish phrase, for example: "tengo mucha hambre".
 7. Use `/parrotdebug words` to inspect recognized words, then `/parrotdebug repeatword tengo` to hear one word repeated by the parrot.
-8. Test composition with `/parrotdebug tryphrase tengo mucha hambre quiero comida`. The parrot uses the newest recording it has for each word and inserts a short pause between words. Every word must be present in its vocabulary.
+8. Test composition with `/parrotdebug tryphrase tengo mucha hambre quiero comida`. The parrot uses the newest recording it has for each word and inserts a short pause between words. Every word must be present in its vocabulary. Accent marks are ignored when storing and matching words, so `dormiré`, `dormire` and `dórmire` all match the same stored word.
 
 The model status is available through `/parrotvoice status` and `/parrotdebug info`. If the model is still downloading/loading, wait for the ready message before expecting words to be learned.
 
@@ -44,7 +47,7 @@ The Spanish model is the lightweight 39 MB Vosk model. The official model list r
 
 ## Privacy and retention
 
-Voice learning is opt-in per player and starts disabled. Speech recognition runs locally on the server; player audio is not sent to an external service. The language model is downloaded separately and stored under the server's config directory. Voice audio is not written to disk. Disabling consent or disconnecting erases that player's active capture and learned clips. Stopping the server clears all voice memory.
+Voice learning is opt-in per player and starts disabled. Speech recognition runs locally on the server; player audio is not sent to an external service. The language model is downloaded separately and stored under the server's config directory. Voice audio and learned words are not written to disk. Disabling consent or disconnecting erases that player's active capture and learned clips. Other players' clips remain subject to the per-parrot word limit and global memory ceiling. Stopping the server clears all voice memory.
 
 ## Limitations
 

@@ -84,7 +84,7 @@ public final class ParrotMemoryStore {
                     LOGGER.warn("Ignoring invalid player consent entry '{}'", key);
                 }
             }
-            MEMORIES.clear();
+            clearCache();
             LOGGER.info("Persistent Smart Parrot memory ready; {} consent record(s) loaded", CONSENTS.size());
         } catch (IOException exception) {
             LOGGER.error("Could not initialize persistent Smart Parrot memory", exception);
@@ -104,6 +104,20 @@ public final class ParrotMemoryStore {
     }
 
     /** A decline or revoke deletes all persistent audio contributed by that player. */
+    /** Wipes cached audio on shutdown without deleting the persistent per-parrot files. */
+    public static synchronized void clearCache() {
+        for (ParrotMemory memory : MEMORIES.values()) {
+            for (List<WordRecording> recordings : memory.words.values()) {
+                recordings.forEach(recording -> Arrays.fill(recording.audio, (byte) 0));
+            }
+            memory.phrases.values().forEach(phrase -> Arrays.fill(phrase.audio, (byte) 0));
+            for (Fragment fragment : memory.fragments) {
+                fragment.words.forEach(word -> Arrays.fill(word.audio, (byte) 0));
+            }
+        }
+        MEMORIES.clear();
+    }
+
     public static synchronized void setConsent(UUID playerId, ConsentState state) {
         if (state == ConsentState.UNKNOWN) {
             CONSENTS.remove(playerId);
@@ -229,9 +243,19 @@ public final class ParrotMemoryStore {
         if (fragmentWords.isEmpty()) return;
 
         long now = System.currentTimeMillis();
-        memory.fragments.removeIf(fragment -> now - fragment.timestamp > FRAGMENT_MAX_AGE_MILLIS);
+        var oldFragments = memory.fragments.iterator();
+        while (oldFragments.hasNext()) {
+            Fragment old = oldFragments.next();
+            if (now - old.timestamp > FRAGMENT_MAX_AGE_MILLIS) {
+                old.words.forEach(word -> Arrays.fill(word.audio, (byte) 0));
+                oldFragments.remove();
+            }
+        }
         memory.fragments.addLast(new Fragment(speakerId, now, List.copyOf(fragmentWords)));
-        while (memory.fragments.size() > MAX_RECENT_FRAGMENTS) memory.fragments.removeFirst();
+        while (memory.fragments.size() > MAX_RECENT_FRAGMENTS) {
+            Fragment removed = memory.fragments.removeFirst();
+            removed.words.forEach(word -> Arrays.fill(word.audio, (byte) 0));
+        }
 
         if (fullUtterance != null && recognizedWords.size() >= 2 && fullUtterance.length > 0) {
             String phraseText = String.join(" ", recognizedWords.stream()

@@ -195,7 +195,7 @@ public final class SpeechRecognitionService {
         }
     }
 
-    private static List<WordSegment> recognize(Model model, short[] sourceAudio) {
+    private static List<WordSegment> recognize(Model model, short[] sourceAudio) throws IOException {
         short[] audio16k = downsample48kTo16k(sourceAudio);
         List<WordSegment> words = new ArrayList<>();
         try (Recognizer recognizer = new Recognizer(model, RECOGNITION_SAMPLE_RATE)) {

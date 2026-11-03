@@ -9,7 +9,9 @@ import dev.silverwall.parrotsvc.ParrotSvcMod;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,9 +31,15 @@ public final class VoiceMemory {
     private static final int SAMPLE_RATE = 48_000;
     private static final int MAX_PHRASE_SAMPLES = SAMPLE_RATE * 6;
     private static final int MIN_PHRASE_SAMPLES = SAMPLE_RATE / 5;
+    private static final int MIN_WORD_SAMPLES = SAMPLE_RATE / 12;
+    private static final int MAX_WORD_SAMPLES = (int) (SAMPLE_RATE * 1.5);
+    private static final int WORD_START_PADDING = SAMPLE_RATE / 30;
+    private static final int WORD_END_PADDING = SAMPLE_RATE / 20;
     private static final int MAX_ACTIVE_SESSIONS = 32;
     private static final int MAX_STORED_CLIPS = 64;
     private static final long MAX_STORED_SAMPLES = 2_000_000L;
+    private static final int MAX_STORED_WORD_CLIPS = 256;
+    private static final long MAX_STORED_WORD_SAMPLES = SAMPLE_RATE * 20L;
     private static final long END_OF_PHRASE_NANOS = 600_000_000L;
     private static final double LEARN_RADIUS = 12.0;
     private static final float PLAYBACK_DISTANCE = 20.0F;
@@ -40,7 +48,9 @@ public final class VoiceMemory {
     private static final Map<UUID, CaptureSession> SESSIONS = new ConcurrentHashMap<>();
     private static final java.util.Set<UUID> CONSENTING = ConcurrentHashMap.newKeySet();
     private static final List<LearnedClip> LEARNED = new ArrayList<>();
+    private static final List<LearnedWord> LEARNED_WORDS = new ArrayList<>();
     private static long storedSamples;
+    private static long storedWordSamples;
 
     private VoiceMemory() {
     }
@@ -67,6 +77,12 @@ public final class VoiceMemory {
     public static int getLearnedClipCount() {
         synchronized (LEARNED) {
             return LEARNED.size();
+        }
+    }
+
+    public static int getLearnedWordCount() {
+        synchronized (LEARNED_WORDS) {
+            return LEARNED_WORDS.size();
         }
     }
 
@@ -103,8 +119,19 @@ public final class VoiceMemory {
             try {
                 short[] decoded = session.decoder.decode(opusFrame);
                 if (decoded != null && decoded.length > 0) {
+                    long packetNow = System.nanoTime();
+                    long elapsedNanos = packetNow - session.lastPacketNanos;
+                    long elapsedSamples = elapsedNanos * SAMPLE_RATE / 1_000_000_000L;
+
+                    // Voice activation can omit silent packets. Reinsert a bounded
+                    // approximation of those gaps for word-level alignment.
+                    if (elapsedNanos > 30_000_000L) {
+                        int missingSamples = (int) Math.max(0L, elapsedSamples - decoded.length);
+                        session.appendSilence(Math.min(missingSamples, SAMPLE_RATE / 3));
+                    }
+
                     session.append(decoded);
-                    session.lastPacketNanos = System.nanoTime();
+                    session.lastPacketNanos = packetNow;
                 }
             } catch (Throwable exception) {
                 SESSIONS.remove(speakerId, session);
@@ -133,6 +160,8 @@ public final class VoiceMemory {
                 session.close();
                 if (samples.length >= MIN_PHRASE_SAMPLES && CONSENTING.contains(speakerId)) {
                     finished.add(new FinishedPhrase(speakerId, samples));
+                } else {
+                    Arrays.fill(samples, (short) 0);
                 }
             }
         }
@@ -163,10 +192,56 @@ public final class VoiceMemory {
             return;
         }
 
-        remember(parrot.getUuid(), speakerId, samples);
+        UUID parrotId = parrot.getUuid();
+        remember(parrotId, speakerId, samples);
         play(parrot, samples, api);
+
+        // Minecraft's normal client-options packet already contains each player's
+        // selected language. No client-side copy of this mod is required.
+        String clientLanguage = speaker.getClientOptions().language();
+        if (SpeechRecognitionService.supportsLanguage(clientLanguage)) {
+            short[] phraseForSegmentation = samples.clone();
+            boolean queued = SpeechRecognitionService.recognizeSpanishAsync(clientLanguage, samples, recognized ->
+                    server.execute(() -> {
+                        try {
+                            if (!CONSENTING.contains(speakerId)) {
+                                return;
+                            }
+                            ServerPlayerEntity currentSpeaker = server.getPlayerManager().getPlayer(speakerId);
+                            if (currentSpeaker == null) {
+                                return;
+                            }
+                            ParrotEntity currentParrot = findNearestSmartParrot(currentSpeaker, LEARN_RADIUS);
+                            if (currentParrot == null || !currentParrot.getUuid().equals(parrotId)) {
+                                return;
+                            }
+
+                            int learned = 0;
+                            for (SpeechRecognitionService.WordSegment segment : recognized) {
+                                short[] wordAudio = extractWord(phraseForSegmentation, segment);
+                                if (wordAudio == null) {
+                                    continue;
+                                }
+                                rememberWord(parrotId, speakerId, segment.word(), wordAudio);
+                                Arrays.fill(wordAudio, (short) 0);
+                                learned++;
+                            }
+                            if (learned > 0) {
+                                LOGGER.info("Smart Parrot {} learned {} Spanish word clip(s) from {}",
+                                        parrotId, learned, speakerId);
+                            }
+                        } finally {
+                            Arrays.fill(phraseForSegmentation, (short) 0);
+                        }
+                    }));
+            if (!queued) {
+                Arrays.fill(phraseForSegmentation, (short) 0);
+            }
+        }
+
         LOGGER.debug("Smart parrot {} learned a {} ms voice phrase from {}",
-                parrot.getUuid(), Math.round(samples.length * 1000.0 / SAMPLE_RATE), speakerId);
+                parrotId, Math.round(samples.length * 1000.0 / SAMPLE_RATE), speakerId);
+        Arrays.fill(samples, (short) 0);
     }
 
     public static boolean repeatNearest(ServerPlayerEntity player, VoicechatServerApi api) {
@@ -182,7 +257,53 @@ public final class VoiceMemory {
             return false;
         }
         play(parrot, samples, api);
+        Arrays.fill(samples, (short) 0);
         return true;
+    }
+
+    public static boolean repeatWordNearest(ServerPlayerEntity player, VoicechatServerApi api, String requestedWord) {
+        if (api == null) {
+            return false;
+        }
+        ParrotEntity parrot = findNearestSmartParrot(player, 24.0);
+        if (parrot == null) {
+            return false;
+        }
+        short[] samples = getLatestWordClip(parrot.getUuid(), normalizeWord(requestedWord));
+        if (samples == null) {
+            return false;
+        }
+        play(parrot, samples, api);
+        Arrays.fill(samples, (short) 0);
+        return true;
+    }
+
+    public static List<String> getLearnedWordsNearest(ServerPlayerEntity player) {
+        ParrotEntity parrot = findNearestSmartParrot(player, 24.0);
+        if (parrot == null) {
+            return List.of();
+        }
+        synchronized (LEARNED_WORDS) {
+            LinkedHashSet<String> words = new LinkedHashSet<>();
+            for (LearnedWord word : LEARNED_WORDS) {
+                if (word.parrotId().equals(parrot.getUuid())) {
+                    words.add(word.word());
+                }
+            }
+            return List.copyOf(words);
+        }
+    }
+
+    private static short[] extractWord(short[] phrase, SpeechRecognitionService.WordSegment segment) {
+        double startSeconds = Math.max(0.0, segment.startSeconds());
+        double endSeconds = Math.max(startSeconds, segment.endSeconds());
+        int start = Math.max(0, (int) Math.floor(startSeconds * SAMPLE_RATE) - WORD_START_PADDING);
+        int end = Math.min(phrase.length, (int) Math.ceil(endSeconds * SAMPLE_RATE) + WORD_END_PADDING);
+        int length = end - start;
+        if (length < MIN_WORD_SAMPLES || length > MAX_WORD_SAMPLES) {
+            return null;
+        }
+        return Arrays.copyOfRange(phrase, start, end);
     }
 
     private static ParrotEntity findNearestSmartParrot(ServerPlayerEntity player, double radius) {
@@ -221,6 +342,50 @@ public final class VoiceMemory {
             }
         }
         return null;
+    }
+
+    private static short[] getLatestWordClip(UUID parrotId, String word) {
+        synchronized (LEARNED_WORDS) {
+            for (int i = LEARNED_WORDS.size() - 1; i >= 0; i--) {
+                LearnedWord clip = LEARNED_WORDS.get(i);
+                if (clip.parrotId().equals(parrotId) && clip.word().equals(word)) {
+                    return Arrays.copyOf(clip.samples(), clip.samples().length);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void rememberWord(UUID parrotId, UUID speakerId, String rawWord, short[] samples) {
+        String word = normalizeWord(rawWord);
+        if (word.isBlank() || samples.length < MIN_WORD_SAMPLES || samples.length > MAX_WORD_SAMPLES) {
+            return;
+        }
+
+        short[] copy = Arrays.copyOf(samples, samples.length);
+        synchronized (LEARNED_WORDS) {
+            while (!LEARNED_WORDS.isEmpty()
+                    && (LEARNED_WORDS.size() >= MAX_STORED_WORD_CLIPS
+                    || storedWordSamples + copy.length > MAX_STORED_WORD_SAMPLES)) {
+                LearnedWord removed = LEARNED_WORDS.remove(0);
+                storedWordSamples -= removed.samples().length;
+                Arrays.fill(removed.samples(), (short) 0);
+            }
+            if (copy.length <= MAX_STORED_WORD_SAMPLES) {
+                LEARNED_WORDS.add(new LearnedWord(parrotId, speakerId, word, copy));
+                storedWordSamples += copy.length;
+            } else {
+                Arrays.fill(copy, (short) 0);
+            }
+        }
+    }
+
+    private static String normalizeWord(String word) {
+        if (word == null) {
+            return "";
+        }
+        return word.toLowerCase(Locale.ROOT).trim()
+                .replaceAll("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$", "");
     }
 
     private static void play(ParrotEntity parrot, short[] originalSamples, VoicechatServerApi api) {
@@ -278,6 +443,17 @@ public final class VoiceMemory {
             LEARNED.removeIf(clip -> {
                 if (clip.speakerId().equals(playerId)) {
                     storedSamples -= clip.samples().length;
+                    Arrays.fill(clip.samples(), (short) 0);
+                    return true;
+                }
+                return false;
+            });
+        }
+        synchronized (LEARNED_WORDS) {
+            LEARNED_WORDS.removeIf(clip -> {
+                if (clip.speakerId().equals(playerId)) {
+                    storedWordSamples -= clip.samples().length;
+                    Arrays.fill(clip.samples(), (short) 0);
                     return true;
                 }
                 return false;
@@ -299,8 +475,14 @@ public final class VoiceMemory {
         }
         CONSENTING.clear();
         synchronized (LEARNED) {
+            LEARNED.forEach(clip -> Arrays.fill(clip.samples(), (short) 0));
             LEARNED.clear();
             storedSamples = 0;
+        }
+        synchronized (LEARNED_WORDS) {
+            LEARNED_WORDS.forEach(clip -> Arrays.fill(clip.samples(), (short) 0));
+            LEARNED_WORDS.clear();
+            storedWordSamples = 0;
         }
     }
 
@@ -308,6 +490,9 @@ public final class VoiceMemory {
     }
 
     private record LearnedClip(UUID parrotId, UUID speakerId, short[] samples) {
+    }
+
+    private record LearnedWord(UUID parrotId, UUID speakerId, String word, short[] samples) {
     }
 
     private static final class CaptureSession {
@@ -325,13 +510,26 @@ public final class VoiceMemory {
             if (amount <= 0) {
                 return;
             }
-            int required = size + amount;
+            ensureCapacity(size + amount);
+            System.arraycopy(decoded, 0, samples, size, amount);
+            size += amount;
+        }
+
+        private void appendSilence(int count) {
+            int amount = Math.min(count, MAX_PHRASE_SAMPLES - size);
+            if (amount <= 0) {
+                return;
+            }
+            ensureCapacity(size + amount);
+            Arrays.fill(samples, size, size + amount, (short) 0);
+            size += amount;
+        }
+
+        private void ensureCapacity(int required) {
             if (required > samples.length) {
                 int capacity = Math.min(MAX_PHRASE_SAMPLES, Math.max(required, samples.length * 2));
                 samples = Arrays.copyOf(samples, capacity);
             }
-            System.arraycopy(decoded, 0, samples, size, amount);
-            size += amount;
         }
 
         private short[] copySamples() {
@@ -342,6 +540,7 @@ public final class VoiceMemory {
             if (!decoder.isClosed()) {
                 decoder.close();
             }
+            Arrays.fill(samples, (short) 0);
             samples = new short[0];
             size = 0;
         }

@@ -215,7 +215,7 @@ public final class ParrotSvcMod implements ModInitializer {
 
     private static void sendConsentPrompt(ServerPlayerEntity player) {
         MutableText message = Text.literal(
-                "§e¿Quieres dar consentimiento para que §bParrot + Simple Voice Chat§e utilice tu voz para dar más vida a los loros de Minecraft? Tu voz se procesará para que aprendan palabras y frases y puedan repetirlas. Las grabaciones se guardarán comprimidas en la memoria individual del loro y seguirán disponibles aunque te desconectes. Puedes cambiar tu decisión con /parrotvoice revoke.\n");
+                "§e¿Quieres dar consentimiento para que §bParrot + Simple Voice Chat§e utilice tu voz para dar más vida a los loros de Minecraft? Tu voz se procesará localmente en el servidor, sin enviarse a servicios externos, para que aprendan palabras y frases y puedan repetirlas. Las grabaciones se guardarán de forma permanente y comprimida en la memoria individual del loro, incluso cuando te desconectes. Puedes retirar el consentimiento y borrar tus grabaciones con /parrotvoice revoke.\n");
         message.append(Text.literal("[Sí]").styled(style -> style
                 .withColor(Formatting.GREEN)
                 .withBold(true)

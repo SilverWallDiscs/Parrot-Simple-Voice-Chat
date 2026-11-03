@@ -436,6 +436,7 @@ public final class VoiceMemory {
         for (Map.Entry<UUID, CaptureSession> entry : SESSIONS.entrySet()) {
             closeSession(entry.getKey());
         }
+        ParrotMemoryStore.clearCache();
     }
 
     private record FinishedPhrase(UUID speakerId, short[] samples) {}

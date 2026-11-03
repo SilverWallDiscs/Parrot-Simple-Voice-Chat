@@ -1,28 +1,28 @@
 # Parrot + Simple Voice Chat
 
-A Fabric 1.21.1 experiment for intelligent parrots that learn speech fragments from nearby players through Simple Voice Chat.
+A Fabric 1.21.1 experiment that lets marked Smart Parrots learn and repeat nearby players through Simple Voice Chat.
 
 ## Current prototype
 
-- `/parrotdebug summon` — spawns a vanilla parrot marked as a Smart Parrot (permission level 2).
-- `/parrotdebug info` — reports how many non-empty microphone packets the Simple Voice Chat API listener has received since server startup.
-- Simple Voice Chat API 2.6.25 integration is registered through the official `voicechat` entrypoint.
+- /parrotdebug summon — spawns a vanilla parrot marked as a Smart Parrot (permission level 2).
+- /parrotvoice consent — explicitly opts the executing player into temporary voice learning, or disables it.
+- /parrotdebug repeat — asks the nearest Smart Parrot to repeat its latest learned clip (permission level 2).
+- /parrotdebug info — reports received packets, active captures, phrases held in RAM and consenting players.
+- Decodes incoming Opus microphone frames to 48 kHz PCM with the Simple Voice Chat API decoder.
+- Ends a phrase after a short gap in incoming voice packets, then assigns it to the nearest Smart Parrot within 12 blocks.
+- Stores short audio clips in server RAM only (maximum 6 seconds per phrase, a global memory cap, and bounded clip count).
+- Replays the clip from the parrot's entity position through a Simple Voice Chat entity audio channel, with a raised pitch and slight vibrato.
 
-This is an early integration milestone, not the complete learning system yet. The current listener only counts incoming Opus microphone packets; it does not persist, transcribe, or replay voice. Word-level learning requires decoding and segmenting audio plus a speech recognizer. Audio is not written to disk in this prototype.
+## Privacy and retention
 
-## Build
+Voice learning is opt-in per player and starts disabled. Audio is not written to disk and is never sent to an external service. Disabling consent or disconnecting erases that player's active capture and learned clips. Stopping the server clears all voice memory. Only nearby Smart Parrots receive phrases.
 
-Requires Java 21 and Gradle 8.12+.
+## Important limitations
 
-```bash
-gradle build
-```
+This milestone learns and replays complete phrases. It does not yet recognize speech or isolate individual words. Word-level recombination still needs a speech-to-text/alignment stage and word-boundary segmentation. Pitch raising is currently simple resampling, so it also makes playback shorter/faster.
 
-The mod currently targets Fabric Loader and Minecraft 1.21.1. Simple Voice Chat must be installed on both client and server, with an API version compatible with 2.6.25.
+## Build and dependencies
 
-## Debug commands
+Requires Java 21, Gradle 8.12+, Minecraft 1.21.1 and Fabric. Install Fabric API and Simple Voice Chat on the server; players need Simple Voice Chat on the client to hear the parrot audio.
 
-```text
-/parrotdebug summon
-/parrotdebug info
-```
+Simple Voice Chat API 2.6.25 is loaded through the official voicechat entrypoint.

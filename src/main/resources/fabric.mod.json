@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "parrot_svc",
+  "version": "${version}",
+  "name": "Parrot + Simple Voice Chat",
+  "description": "Smart parrots that learn and imitate nearby players through Simple Voice Chat.",
+  "authors": ["SilverWallDiscs"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.silverwall.parrotsvc.ParrotSvcMod"],
+    "voicechat": ["dev.silverwall.parrotsvc.voice.SmartParrotVoicePlugin"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "voicechat_api": ">=${voicechat_api_version}"
+  }
+}

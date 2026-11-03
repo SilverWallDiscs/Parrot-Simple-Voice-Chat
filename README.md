@@ -11,7 +11,7 @@ A Fabric 1.21.1 experiment that lets marked Smart Parrots learn and repeat nearb
 - Decodes incoming Opus microphone frames to 48 kHz PCM with the Simple Voice Chat API decoder.
 - Ends a phrase after a short gap in incoming voice packets, then assigns it to the nearest Smart Parrot within 12 blocks.
 - Stores short audio clips in server RAM only (maximum 6 seconds per phrase, a global memory cap, and bounded clip count).
-- Replays the clip from the parrot's entity position through a Simple Voice Chat entity audio channel. The parrot voice chain raises pitch by about 4.5 semitones, applies a 300 Hz high-pass and 5 kHz low-pass, then adds three narrow high-Q nasal resonances (Q 5.5, 7.0 and 8.0 at 1.25, 2.35 and 3.45 kHz), soft saturation, subtle bit reduction and a restrained flutter.
+- Replays the clip from the parrot's entity position through a Simple Voice Chat entity audio channel. The parrot voice chain chooses a fresh pitch multiplier between 1.44x and 2.16x for each imitation (matching the range around the 1.8x Java Edition zombie-parrot sound), applies a 300 Hz high-pass and 5 kHz low-pass, then adds three narrow high-Q nasal resonances (Q 5.5, 7.0 and 8.0 at 1.25, 2.35 and 3.45 kHz), soft saturation, subtle bit reduction and a restrained flutter.
 
 ## Privacy and retention
 
@@ -19,7 +19,7 @@ Voice learning is opt-in per player and starts disabled. Audio is not written to
 
 ## Important limitations
 
-This milestone learns and replays complete phrases. Playback uses a deliberately stylized DSP chain; its resonant EQ approximates a nasal/formant-like timbre but is not a true LPC formant-shifter. It does not yet recognize speech or isolate individual words. Word-level recombination still needs a speech-to-text/alignment stage and word-boundary segmentation. Pitch raising is currently simple resampling, so it also makes playback shorter/faster.
+This milestone learns and replays complete phrases. Playback uses a deliberately stylized DSP chain; its resonant EQ approximates a nasal/formant-like timbre but is not a true LPC formant-shifter. It does not yet recognize speech or isolate individual words. Word-level recombination still needs a speech-to-text/alignment stage and word-boundary segmentation. Pitch raising is currently simple resampling, so it also makes playback shorter/faster; its multiplier is randomized independently for every repetition.
 
 ## Build and dependencies
 

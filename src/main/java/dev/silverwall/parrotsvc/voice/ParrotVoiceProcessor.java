@@ -27,11 +27,13 @@ public final class ParrotVoiceProcessor {
         Biquad highPass = Biquad.highPass(SAMPLE_RATE, 300.0, 0.707);
         Biquad lowPass = Biquad.lowPass(SAMPLE_RATE, 5_000.0, 0.707);
 
-        // Narrow midrange peaks create the bright, nasal "talking bird" color.
-        Biquad nasalBody = Biquad.peaking(SAMPLE_RATE, 1_250.0, 0.95, 2.8);
-        Biquad nasalEdge = Biquad.peaking(SAMPLE_RATE, 2_350.0, 1.25, 3.8);
-        Biquad squawk = Biquad.peaking(SAMPLE_RATE, 3_450.0, 1.65, 1.8);
-        Biquad chestCut = Biquad.peaking(SAMPLE_RATE, 680.0, 0.9, -2.5);
+        // High-Q, narrow resonances. Keeping these peaks narrow prevents the
+        // whole midrange from becoming boxy or harsh while preserving the
+        // independent 300 Hz / 5 kHz band limits.
+        Biquad nasalBody = Biquad.peaking(SAMPLE_RATE, 1_250.0, 5.5, 2.2);
+        Biquad nasalEdge = Biquad.peaking(SAMPLE_RATE, 2_350.0, 7.0, 3.0);
+        Biquad squawk = Biquad.peaking(SAMPLE_RATE, 3_450.0, 8.0, 1.5);
+        Biquad chestCut = Biquad.peaking(SAMPLE_RATE, 680.0, 1.4, -2.0);
 
         short[] output = new short[pitched.length];
         double normalization = Math.tanh(1.65);

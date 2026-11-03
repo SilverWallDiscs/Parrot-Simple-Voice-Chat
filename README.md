@@ -1,60 +1,52 @@
 # Parrot + Simple Voice Chat
 
-A Fabric 1.21.1 mod that lets Smart Parrots learn and imitate nearby players through Simple Voice Chat. Its features run on the server; installing the mod on clients is optional.
+A server-side Fabric 1.21.1 mod that lets Smart Parrots learn and imitate consenting players through Simple Voice Chat. Clients do not need this mod installed; they do need Simple Voice Chat to use voice chat.
 
-## Current prototype
+## Consent and privacy
 
-- `/parrotdebug summon` — spawns a vanilla parrot marked as a Smart Parrot (permission level 2).
-- `/parrotvoice consent` — explicitly opts the executing player into temporary voice learning, or disables it.
-- `/parrotvoice status` — displays the Minecraft client language, speech-model status and consent state.
-- `/parrotdebug repeat` — asks the nearest Smart Parrot to repeat its latest learned phrase (permission level 2).
+- On first join, a player with no saved choice sees clickable green **[Sí]** and red **[No]** options in chat.
+- The three persisted states are: undecided, accepted and declined. Players who have already decided are not prompted again.
+- `/parrotvoice consent` toggles consent. `/parrotvoice accept` enables it, `/parrotvoice decline` declines, `/parrotvoice revoke` withdraws consent and deletes that player's stored voice clips and every phrase containing their voice, and `/parrotvoice status` shows the saved state.
+- Consent is per player and persists across reconnects and server restarts. Disconnecting only stops live capture; it does not delete already learned audio, so a parrot can still repeat its stored owner's voice while that owner is offline.
+- Voice clips and phrase recordings are stored on the server in compressed per-parrot files under `config/parrot-svc/parrots/`. The consent choices are stored in `config/parrot-svc/player-consent.properties`. Back up these files with the server.
+- Audio is reduced from 48 kHz / 16-bit to 16 kHz / 8-bit mono and compressed before saving. This lowers disk use and gives playback a rougher, more parrot-like sound.
+- Speech recognition runs offline on the server using Vosk. Player audio is not sent to a cloud speech service.
+- Only a player who has accepted is captured. Revoking or declining deletes that player's stored contributions from every parrot memory file, including mixed phrases that used their voice.
+
+## Smart Parrot memory
+
+- Each parrot has its own independent memory keyed by its Minecraft entity UUID. Its memory survives owner disconnects and server restarts.
+- Each parrot remembers up to 150 distinct words by default. The limit is configurable in `config/parrot-svc/voice-memory.properties` with `max-words-per-parrot=150` (allowed range: 1–5000). Restart after editing.
+- A word can retain up to three speaker recordings. When composing or repeating words, the parrot prefers its tamed owner’s recording when available; otherwise it uses the newest available speaker recording.
+- Words are stored lowercase without acute accents or umlauts, while preserving `ñ`. Thus `dormiré`, `dormire` and `dórmire` match the same word, but `año` and `ano` remain different.
+- Natural multi-word utterances are stored as their own phrase recordings. The newest clean owner recording has priority over a phrase assembled from fragments or one containing visitor audio.
+- The mod also combines recent short utterances into phrase candidates (up to 4 fragments and 8 words). The suffix `(3)` means the phrase was built from three separate utterances; `(2)` means two. `E` marks a phrase where at least one recording came from someone other than the parrot's owner.
+- If the owner later says the whole phrase fluently, that one-piece owner recording replaces the lower-priority assembled/visitor version. A later clean owner sequence can also replace an `E` candidate.
+- Learned phrases have no age-based expiration. The store has a defensive ceiling of 20,000 distinct phrases per parrot; after that, existing phrases are kept and new distinct phrase entries are not added.
+
+## Commands
+
+- `/parrotdebug summon` — spawns a test Smart Parrot (permission level 2).
 - `/parrotdebug words` — lists words learned by the nearest Smart Parrot.
-- `/parrotdebug tryphrase <phrase>` — composes and plays a phrase using the nearest Smart Parrot's latest recordings for every word. Every word must already be learned by that parrot; unknown words are reported.
-- `/parrotdebug repeatword <word>` — asks the nearest Smart Parrot to repeat one learned word.
-- `/parrotdebug info` — reports received packets, active captures, RAM phrases, word clips, consenting players and speech-model status.
-- Decodes incoming Simple Voice Chat Opus microphone frames to 48 kHz mono PCM.
-- Uses the language sent in vanilla Minecraft client options. Spanish locales (`es_*`) use the Spanish model. English recognition is planned but is not included yet; other languages are not incorrectly fed to the Spanish model.
-- Stores learned words in lowercase without accent marks (while preserving `ñ`) so phrase tests match regardless of written accents.
-- Uses Vosk offline speech recognition with word timestamps to identify individual spoken Spanish words.
-- Converts the 48 kHz microphone audio to 16 kHz for Vosk, then cuts word clips from the original higher-quality audio using the recognized start/end times.
-- Adds small silence gaps inferred from incoming voice-packet timing so speech recognition can estimate word boundaries more accurately.
-- Automatically downloads the official small Spanish model on the first server start (about 39 MB) into `config/parrot-svc/models`. It is loaded asynchronously; server ticks are not blocked. The model is stored on disk, but player audio and learned clips stay in RAM.
-- Keeps phrase audio and word clips only in server RAM. Each Smart Parrot stores one, newest recording per distinct normalized word, with a default limit of 150 words per parrot. When full, the oldest word for that parrot is replaced. A separate global audio-memory ceiling bounds total memory across the server.
-- Creates `config/parrot-svc/voice-memory.properties` on first startup. Set `max-words-per-parrot=150` to change the limit (1–5000); restart the server after editing.
-- Learned audio is attributed to the player who supplied it. Disabling that player's consent or disconnecting erases their active capture and learned recordings; stopping the server erases all voice memory. The vocabulary and audio are not persisted to disk.
-- Replays phrases and individual words from the parrot's entity position through a Simple Voice Chat entity audio channel. Playback uses the parrot-like pitch and DSP chain.
+- `/parrotdebug phrases` — lists up to 40 recently updated phrases and their fragment / visitor markers.
+- `/parrotdebug repeat` — plays the nearest Smart Parrot's latest saved phrase.
+- `/parrotdebug repeatword <word>` — plays a saved word, preferring the tamed owner's voice.
+- `/parrotdebug tryphrase <phrase>` — plays an exact saved phrase if one exists; otherwise composes it from the parrot's saved word recordings. Diacritics are ignored.
+- `/parrotdebug info` — shows nearby parrot memory counts, captures, consent count and speech model status.
+- `/parrotvoice status` — shows your language, recognition status and consent state.
 
-## First Spanish test
+## Speech recognition and learning
 
-1. Start the Fabric 1.21.1 server with Fabric API, Simple Voice Chat and this mod.
-2. The server downloads and loads the Spanish Vosk model on first startup. Check the console for `Spanish speech recognition is ready`.
-3. Set the Minecraft client language to Spanish in Options > Language, then join the server. No client-side copy of this mod is required.
-4. Spawn a Smart Parrot with `/parrotdebug summon`.
-5. Enable learning with `/parrotvoice consent`.
-6. Stand within 12 blocks of the parrot and say a short Spanish phrase, for example: "tengo mucha hambre".
-7. Use `/parrotdebug words` to inspect recognized words, then `/parrotdebug repeatword tengo` to hear one word repeated by the parrot.
-8. Test composition with `/parrotdebug tryphrase tengo mucha hambre quiero comida`. The parrot uses the newest recording it has for each word and inserts a short pause between words. Every word must be present in its vocabulary. Accent marks are ignored when storing and matching words, so `dormiré`, `dormire` and `dórmire` all match the same stored word.
+1. Install Fabric API, Simple Voice Chat and this mod on the server. Players use the Simple Voice Chat client mod as usual.
+2. Set Minecraft's client language to Spanish. Spanish locales (`es_*`) use the small Vosk model `vosk-model-small-es-0.42`.
+3. On first server start, the model downloads to `config/parrot-svc/models` and loads in the background. Wait for `Spanish speech recognition is ready`.
+4. Tame a parrot and keep it nearby (within 12 blocks), or use `/parrotdebug summon` for a test parrot.
+5. Accept the clickable chat prompt. You can change your decision later with `/parrotvoice revoke` or `/parrotvoice consent`.
+6. Speak naturally. Recognized words are clipped from the original voice recording, saved to that parrot and used to build phrase recordings.
+7. Try examples such as `/parrotdebug tryphrase tengo mucha hambre`, `/parrotdebug tryphrase hola mi dueño` or `/parrotdebug tryphrase te extrañé`.
 
-The model status is available through `/parrotvoice status` and `/parrotdebug info`. If the model is still downloading/loading, wait for the ready message before expecting words to be learned.
+The recognition model can mishear words, especially with background noise, overlapping voices or fast speech. The built-in example phrases are goals to teach, not synthetic voice lines: the mod needs consented recordings before it can reproduce a phrase in a player's voice.
 
-## Speech recognition and languages
+## Build
 
-The first language is Spanish because it is the project's initial test language. The mod reads the locale Minecraft already sends to the server, so player language selection works even if they have not installed this mod client-side. Spanish locale variants currently share the small Spanish model `vosk-model-small-es-0.42`.
-
-English is designed as the next model to add. Players with an English client locale are detected, but English transcription remains disabled until its model is integrated.
-
-The Spanish model is the lightweight 39 MB Vosk model. The official model list reports a 16.02% word error rate on the Common Voice test and 16.72% on the MTEDX test for this small model; noisy game voice chat may perform differently. A larger Spanish model is available but requires significantly more disk and RAM.
-
-## Privacy and retention
-
-Voice learning is opt-in per player and starts disabled. Speech recognition runs locally on the server; player audio is not sent to an external service. The language model is downloaded separately and stored under the server's config directory. Voice audio and learned words are not written to disk. Disabling consent or disconnecting erases that player's active capture and learned clips. Other players' clips remain subject to the per-parrot word limit and global memory ceiling. Stopping the server clears all voice memory.
-
-## Limitations
-
-This milestone recognizes and stores individual word audio clips. It does not yet automatically compose new sentences from learned words. Word timestamps depend on speech-recognition accuracy and clear voice packets; false or missed words are possible. The next step is to improve word-learning confidence and then build the phrase-composition system.
-
-## Build and dependencies
-
-Requires Java 21, Gradle 8.12+, Minecraft 1.21.1 and Fabric. Install Parrot + Simple Voice Chat, Fabric API and Simple Voice Chat on the server. Players need Simple Voice Chat on their clients to send and hear voice. This mod is server-side in functionality and client optional.
-
-Vosk Java and JNA are included as nested dependencies. The model itself is downloaded from the official Vosk models host on first server startup. Vosk's Java API is Apache-2.0; the Spanish small model is also listed as Apache-2.0.
+Requires Java 21, Gradle 8.12+, Minecraft 1.21.1 and Fabric. Vosk Java and JNA are included as nested dependencies. The model itself is downloaded from the official Vosk model host on first startup.

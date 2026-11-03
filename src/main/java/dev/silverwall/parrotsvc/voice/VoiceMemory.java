@@ -47,6 +47,12 @@ public final class VoiceMemory {
 
     public static boolean toggleConsent(UUID playerId) {
         if (CONSENTING.remove(playerId)) {
+            CaptureSession session = SESSIONS.remove(playerId);
+            if (session != null) {
+                synchronized (session) {
+                    session.close();
+                }
+            }
             discardPlayerAudio(playerId);
             return false;
         }
@@ -89,6 +95,11 @@ public final class VoiceMemory {
         }
 
         synchronized (session) {
+            if (!CONSENTING.contains(speakerId)) {
+                SESSIONS.remove(speakerId, session);
+                session.close();
+                return;
+            }
             try {
                 short[] decoded = session.decoder.decode(opusFrame);
                 if (decoded != null && decoded.length > 0) {

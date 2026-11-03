@@ -294,6 +294,99 @@ public final class VoiceMemory {
         }
     }
 
+    /**
+     * Builds a test phrase by concatenating the most recently learned recording
+     * for each requested word. This is a test composer, not a text-to-speech system.
+     */
+    public static PhraseTryResult tryPhraseNearest(
+            ServerPlayerEntity player,
+            VoicechatServerApi api,
+            String requestedPhrase
+    ) {
+        if (api == null) {
+            return new PhraseTryResult(false, "Simple Voice Chat is unavailable.");
+        }
+
+        ParrotEntity parrot = findNearestSmartParrot(player, 24.0);
+        if (parrot == null) {
+            return new PhraseTryResult(false, "No Smart Parrot is close enough (24 blocks).");
+        }
+
+        if (requestedPhrase == null || requestedPhrase.isBlank()) {
+            return new PhraseTryResult(false, "Enter a phrase to compose.");
+        }
+
+        String[] rawWords = requestedPhrase.trim().split("\\s+");
+        if (rawWords.length > 16) {
+            return new PhraseTryResult(false, "A test phrase can contain at most 16 words.");
+        }
+
+        List<String> words = new ArrayList<>(rawWords.length);
+        for (String rawWord : rawWords) {
+            String normalized = normalizeWord(rawWord);
+            if (!normalized.isBlank()) {
+                words.add(normalized);
+            }
+        }
+        if (words.isEmpty()) {
+            return new PhraseTryResult(false, "No valid words were found in that phrase.");
+        }
+
+        List<short[]> clips = new ArrayList<>(words.size());
+        List<String> missing = new ArrayList<>();
+        synchronized (LEARNED_WORDS) {
+            for (String word : words) {
+                short[] latest = null;
+                for (int i = LEARNED_WORDS.size() - 1; i >= 0; i--) {
+                    LearnedWord learned = LEARNED_WORDS.get(i);
+                    if (learned.parrotId().equals(parrot.getUuid()) && learned.word().equals(word)) {
+                        latest = Arrays.copyOf(learned.samples(), learned.samples().length);
+                        break;
+                    }
+                }
+                if (latest == null) {
+                    missing.add(word);
+                } else {
+                    clips.add(latest);
+                }
+            }
+        }
+
+        if (!missing.isEmpty()) {
+            clips.forEach(clip -> Arrays.fill(clip, (short) 0));
+            return new PhraseTryResult(false, "This parrot has not learned: " + String.join(", ", new LinkedHashSet<>(missing)));
+        }
+
+        final int separatorSamples = SAMPLE_RATE / 20; // 50 ms between words
+        long totalSamples = (long) separatorSamples * Math.max(0, clips.size() - 1);
+        for (short[] clip : clips) {
+            totalSamples += clip.length;
+        }
+        if (totalSamples > SAMPLE_RATE * 8L) {
+            clips.forEach(clip -> Arrays.fill(clip, (short) 0));
+            return new PhraseTryResult(false, "That composed phrase would be longer than 8 seconds.");
+        }
+
+        short[] composed = new short[(int) totalSamples];
+        int offset = 0;
+        for (int i = 0; i < clips.size(); i++) {
+            short[] clip = clips.get(i);
+            System.arraycopy(clip, 0, composed, offset, clip.length);
+            offset += clip.length;
+            Arrays.fill(clip, (short) 0);
+            if (i < clips.size() - 1) {
+                offset += separatorSamples; // the new array is already silent here
+            }
+        }
+
+        play(parrot, composed, api);
+        Arrays.fill(composed, (short) 0);
+        return new PhraseTryResult(true, "Composed " + words.size() + " learned word clip(s): " + String.join(" ", words));
+    }
+
+    public record PhraseTryResult(boolean played, String message) {
+    }
+
     private static short[] extractWord(short[] phrase, SpeechRecognitionService.WordSegment segment) {
         double startSeconds = Math.max(0.0, segment.startSeconds());
         double endSeconds = Math.max(startSeconds, segment.endSeconds());

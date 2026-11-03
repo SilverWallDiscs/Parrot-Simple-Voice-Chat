@@ -9,7 +9,8 @@ package dev.silverwall.parrotsvc.voice;
  */
 public final class ParrotVoiceProcessor {
     private static final int SAMPLE_RATE = 48_000;
-    private static final double PITCH_RATIO = 1.30; // about +4.5 semitones
+    private static final double MIN_PARROT_PITCH = 1.44; // zombie imitation: 1.8 × 0.8
+    private static final double MAX_PARROT_PITCH = 2.16; // zombie imitation: 1.8 × 1.2
     private static final double VIBRATO_HZ = 6.2;
     private static final double VIBRATO_DEPTH_SAMPLES = 1.6;
     private static final double FLUTTER_HZ = 17.0;
@@ -23,7 +24,11 @@ public final class ParrotVoiceProcessor {
             return new short[0];
         }
 
-        short[] pitched = pitchUp(input);
+        // Choose one Minecraft-like pitch multiplier per imitation, not per
+        // sample. The vanilla zombie imitation is centered around 1.8x.
+        double pitchRatio = java.util.concurrent.ThreadLocalRandom.current()
+                .nextDouble(MIN_PARROT_PITCH, MAX_PARROT_PITCH);
+        short[] pitched = pitchUp(input, pitchRatio);
         Biquad highPass = Biquad.highPass(SAMPLE_RATE, 300.0, 0.707);
         Biquad lowPass = Biquad.lowPass(SAMPLE_RATE, 5_000.0, 0.707);
 
@@ -69,12 +74,12 @@ public final class ParrotVoiceProcessor {
         return output;
     }
 
-    private static short[] pitchUp(short[] input) {
-        int outputLength = Math.max(1, (int) Math.ceil(input.length / PITCH_RATIO));
+    private static short[] pitchUp(short[] input, double pitchRatio) {
+        int outputLength = Math.max(1, (int) Math.ceil(input.length / pitchRatio));
         short[] output = new short[outputLength];
 
         for (int i = 0; i < outputLength; i++) {
-            double basePosition = i * PITCH_RATIO;
+            double basePosition = i * pitchRatio;
             double vibrato = Math.sin(2.0 * Math.PI * VIBRATO_HZ * i / SAMPLE_RATE)
                     * VIBRATO_DEPTH_SAMPLES;
             double position = Math.max(0.0, Math.min(input.length - 1.0, basePosition + vibrato));

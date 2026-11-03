@@ -23,6 +23,6 @@ This milestone learns and replays complete phrases. It does not yet recognize sp
 
 ## Build and dependencies
 
-Requires Java 21, Gradle 8.12+, Minecraft 1.21.1 and Fabric. Install Fabric API and Simple Voice Chat on the server; players need Simple Voice Chat on the client to hear the parrot audio.
+Requires Java 21, Gradle 8.12+, Minecraft 1.21.1 and Fabric. Install Parrot + Simple Voice Chat and Fabric API on the server. Players only need Simple Voice Chat on their clients; this mod is server-only.
 
 Simple Voice Chat API 2.6.25 is loaded through the official voicechat entrypoint.

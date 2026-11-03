@@ -69,6 +69,19 @@ public final class ParrotSvcMod implements ModInitializer {
                     context.getSource().sendFeedback(() -> Text.literal("§b" + message), false);
                     return Command.SINGLE_SUCCESS;
                 }))
+                .then(CommandManager.literal("tryphrase")
+                    .then(CommandManager.argument("phrase", StringArgumentType.greedyString()).executes(context -> {
+                        ServerPlayerEntity player = context.getSource().getPlayerOrThrow();
+                        String phrase = StringArgumentType.getString(context, "phrase");
+                        VoiceMemory.PhraseTryResult result = VoiceMemory.tryPhraseNearest(
+                                player, SmartParrotVoicePlugin.getVoicechatApi(), phrase);
+                        if (result.played()) {
+                            context.getSource().sendFeedback(() -> Text.literal("§a" + result.message()), false);
+                            return Command.SINGLE_SUCCESS;
+                        }
+                        context.getSource().sendError(Text.literal("§c" + result.message()));
+                        return 0;
+                    })))
                 .then(CommandManager.literal("repeatword")
                     .then(CommandManager.argument("word", StringArgumentType.word()).executes(context -> {
                         ServerPlayerEntity player = context.getSource().getPlayerOrThrow();

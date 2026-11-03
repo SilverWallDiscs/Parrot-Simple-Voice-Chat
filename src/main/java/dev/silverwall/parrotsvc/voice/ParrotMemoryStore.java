@@ -205,7 +205,8 @@ public final class ParrotMemoryStore {
                 || recognizedWords.size() != wordSamples.size() || !isConsenting(speakerId)) return;
 
         ParrotMemory memory = load(parrotId);
-        if (memory.ownerId == null) memory.ownerId = entityOwnerId != null ? entityOwnerId : speakerId;
+        if (entityOwnerId != null) memory.ownerId = entityOwnerId;
+        else if (memory.ownerId == null) memory.ownerId = speakerId;
         UUID ownerId = memory.ownerId;
 
         List<StoredWord> fragmentWords = new ArrayList<>();

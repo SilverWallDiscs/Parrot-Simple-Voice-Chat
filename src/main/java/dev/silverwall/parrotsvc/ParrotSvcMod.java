@@ -28,6 +28,26 @@ public final class ParrotSvcMod implements ModInitializer {
     public static final String SMART_TAG = "parrot_svc_smart";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
+    private static final java.util.List<String> PHRASE_SUGGESTIONS = java.util.List.of(
+            "tengo hambre", "tengo mucha hambre", "quiero comer", "quiero comida", "dame comida",
+            "tengo sed", "quiero agua", "dame agua", "quiero una fruta", "esto esta rico", "quiero mas",
+            "hola", "hola amigo", "buenos dias", "buenas noches", "como estas", "estoy bien",
+            "que haces", "donde estas", "ven aqui", "mirame", "escuchame", "vamos juntos",
+            "que bonito", "te quiero", "estoy feliz", "estoy triste", "tengo miedo", "estoy aburrido",
+            "estoy cansado", "quiero dormir", "tengo sueno", "estoy enojado", "no me gusta",
+            "eso me gusta", "que divertido", "soy inteligente", "soy un loro inteligente",
+            "que es eso", "que estas haciendo", "que paso", "quien eres", "quiero investigar",
+            "vamos a mirar", "eso es interesante", "he encontrado algo", "mira lo que encontre",
+            "no entiendo", "ya entendi", "dejame pensar", "quiero volar", "vamos a volar",
+            "quiero jugar", "juega conmigo", "quiero compania", "no te vayas", "espera por mi",
+            "sigeme", "vamos a casa", "quiero descansar", "dejame tranquilo", "no me molestes",
+            "no fui yo", "yo no hice nada", "fue culpa tuya", "tengo un secreto",
+            "no se lo digas a nadie", "soy inocente", "que verguenza", "otra vez tu",
+            "soy el jefe", "hola mi dueno", "te estaba esperando", "te extrane", "volviste",
+            "quedate conmigo", "quiero estar contigo", "vamos a pasear", "gracias amigo",
+            "eres mi mejor amigo", "me gusta estar contigo", "hasta manana", "cuidate mucho"
+    );
+
     @Override
     public void onInitialize() {
         ServerTickEvents.END_SERVER_TICK.register(SmartParrotVoicePlugin::tick);
@@ -88,6 +108,16 @@ public final class ParrotSvcMod implements ModInitializer {
                     String message = phrases.isEmpty() ? "No saved phrases for a nearby Smart Parrot yet."
                             : "Saved phrases: " + String.join(" | ", phrases);
                     context.getSource().sendFeedback(() -> Text.literal("§b" + message), false);
+                    return Command.SINGLE_SUCCESS;
+                }))
+                .then(CommandManager.literal("suggestions").executes(context -> {
+                    for (int start = 0; start < PHRASE_SUGGESTIONS.size(); start += 15) {
+                        int end = Math.min(PHRASE_SUGGESTIONS.size(), start + 15);
+                        String chunk = String.join(", ", PHRASE_SUGGESTIONS.subList(start, end));
+                        context.getSource().sendFeedback(() -> Text.literal("§dPhrase ideas: §f" + chunk), false);
+                    }
+                    context.getSource().sendFeedback(() -> Text.literal(
+                            "§7These are teaching prompts, not built-in voice lines. The parrot learns their audio from consenting speakers."), false);
                     return Command.SINGLE_SUCCESS;
                 }))
                 .then(CommandManager.literal("tryphrase")

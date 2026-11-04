@@ -1,21 +1,92 @@
 package dev.silverwall.parrotsvc.voice;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Properties;
+import net.fabricmc.loader.api.FabricLoader;
+
 /**
- * Offline DSP chain for a stylized parrot-like voice.
+ * Offline DSP for a speech-preserving, stylized parrot voice.
  *
- * It is intentionally dependency-free and processes only a short phrase when
- * it is replayed. Resonant EQ creates a nasal/formant-like character; this is
- * an approximation, not a full LPC or phase-vocoder formant shifter.
+ * The original learned PCM is never modified. Pitch is raised by 1.8x and
+ * WSOLA restores the original duration; a configurable wet path then adds
+ * mild nasal resonances, brightness, quantized rasp and vocal flutter.
+ * This is a lightweight timbral effect, not a biological bird-voice model.
  */
 public final class ParrotVoiceProcessor {
     private static final int SAMPLE_RATE = 48_000;
-    private static final double PARROT_PITCH_RATIO = 1.8; // raise pitch while preserving the original duration
+    private static final double PARROT_PITCH_RATIO = 1.8;
     private static final double VIBRATO_HZ = 6.2;
     private static final double VIBRATO_DEPTH_SAMPLES = 1.6;
-    private static final double FLUTTER_HZ = 17.0;
-    private static final double FLUTTER_DEPTH = 0.012;
+    private static final double FLUTTER_HZ = 5.5;
+
+    private static final FilterSettings DEFAULT_FILTERS =
+            new FilterSettings(50, 45, 25, 12, 8);
+    private static volatile FilterSettings filters = DEFAULT_FILTERS;
+    private static volatile boolean settingsLoaded;
 
     private ParrotVoiceProcessor() {
+    }
+
+    /**
+     * Loads the shared Audacity/mod filter controls from config/parrot-svc.
+     * The file is created on first playback and re-read after a server restart.
+     */
+    private static void ensureSettingsLoaded() {
+        if (settingsLoaded) {
+            return;
+        }
+        synchronized (ParrotVoiceProcessor.class) {
+            if (settingsLoaded) {
+                return;
+            }
+
+            Path directory = FabricLoader.getInstance().getConfigDir().resolve("parrot-svc");
+            Path configFile = directory.resolve("voice-filters.properties");
+            Properties properties = new Properties();
+            try {
+                Files.createDirectories(directory);
+                if (Files.isRegularFile(configFile)) {
+                    try (InputStream input = Files.newInputStream(configFile)) {
+                        properties.load(input);
+                    }
+                }
+
+                int mix = readPercent(properties, "mix-percent", DEFAULT_FILTERS.mixPercent());
+                int nasal = readPercent(properties, "nasal", DEFAULT_FILTERS.nasal());
+                int brightness = readPercent(properties, "brightness", DEFAULT_FILTERS.brightness());
+                int roughness = readPercent(properties, "roughness", DEFAULT_FILTERS.roughness());
+                int flutter = readPercent(properties, "flutter", DEFAULT_FILTERS.flutter());
+
+                properties.setProperty("mix-percent", Integer.toString(mix));
+                properties.setProperty("nasal", Integer.toString(nasal));
+                properties.setProperty("brightness", Integer.toString(brightness));
+                properties.setProperty("roughness", Integer.toString(roughness));
+                properties.setProperty("flutter", Integer.toString(flutter));
+
+                try (OutputStream output = Files.newOutputStream(configFile)) {
+                    properties.store(output,
+                            "Parrot voice filter controls (0-100). Changes apply after a server restart.");
+                }
+                filters = new FilterSettings(mix, nasal, brightness, roughness, flutter);
+            } catch (IOException exception) {
+                filters = DEFAULT_FILTERS;
+            }
+            settingsLoaded = true;
+        }
+    }
+
+    private static int readPercent(Properties properties, String key, int fallback) {
+        try {
+            int value = Integer.parseInt(properties.getProperty(key, Integer.toString(fallback)).trim());
+            return Math.max(0, Math.min(100, value));
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
     }
 
     public static short[] process(short[] input) {
@@ -23,52 +94,72 @@ public final class ParrotVoiceProcessor {
             return new short[0];
         }
 
-        // Fixed 1.8x pitch. WSOLA restores the original duration, so the
-        // parrot sounds higher without speaking faster or shortening phrases.
+        ensureSettingsLoaded();
+        FilterSettings controls = filters;
+
+        // Keep the existing 1.8x pitch character, but do not change phrase length.
         short[] pitched = pitchUp(input, PARROT_PITCH_RATIO);
-        Biquad highPass = Biquad.highPass(SAMPLE_RATE, 300.0, 0.707);
-        Biquad lowPass = Biquad.lowPass(SAMPLE_RATE, 5_000.0, 0.707);
+        try {
+            Biquad highPass = Biquad.highPass(SAMPLE_RATE, 150.0, 0.707);
+            Biquad lowPass = Biquad.lowPass(SAMPLE_RATE, 7_200.0, 0.707);
 
-        // High-Q, narrow resonances. Keeping these peaks narrow prevents the
-        // whole midrange from becoming boxy or harsh while preserving the
-        // independent 300 Hz / 5 kHz band limits.
-        Biquad nasalBody = Biquad.peaking(SAMPLE_RATE, 1_250.0, 5.5, 2.2);
-        Biquad nasalEdge = Biquad.peaking(SAMPLE_RATE, 2_350.0, 7.0, 3.0);
-        Biquad squawk = Biquad.peaking(SAMPLE_RATE, 3_450.0, 8.0, 1.5);
-        Biquad chestCut = Biquad.peaking(SAMPLE_RATE, 680.0, 1.4, -2.0);
+            double nasal = controls.nasal() / 100.0;
+            double brightness = controls.brightness() / 100.0;
+            double roughness = controls.roughness() / 100.0;
+            double flutter = controls.flutter() / 100.0;
+            double blend = controls.mixPercent() / 100.0;
 
-        short[] output = new short[pitched.length];
-        double normalization = Math.tanh(1.65);
+            // Broad, gentle resonances avoid the harsh metallic peaks of the old chain.
+            Biquad nasalBody = Biquad.peaking(SAMPLE_RATE, 1_350.0, 1.1, 3.0 * nasal);
+            Biquad nasalEdge = Biquad.peaking(SAMPLE_RATE, 2_450.0, 1.0, 3.5 * nasal);
+            Biquad beakBrightness = Biquad.peaking(SAMPLE_RATE, 3_800.0, 0.9, 3.0 * brightness);
+            Biquad chestCut = Biquad.peaking(SAMPLE_RATE, 620.0, 1.1, -0.8 * nasal);
 
-        for (int i = 0; i < pitched.length; i++) {
-            double sample = pitched[i] / 32768.0;
+            double quantizationLevels = 2_048.0 - (1_536.0 * roughness);
+            double roughnessBlend = 0.16 * roughness;
+            double flutterDepth = 0.035 * flutter;
+            double[] mixed = new double[pitched.length];
+            double peak = 0.0;
 
-            sample = highPass.process(sample);
-            sample = chestCut.process(sample);
-            sample = nasalBody.process(sample);
-            sample = nasalEdge.process(sample);
-            sample = squawk.process(sample);
-            sample = lowPass.process(sample);
+            for (int i = 0; i < pitched.length; i++) {
+                double dry = pitched[i] / 32768.0;
+                double wet = highPass.process(dry);
+                wet = chestCut.process(wet);
+                wet = nasalBody.process(wet);
+                wet = nasalEdge.process(wet);
+                wet = beakBrightness.process(wet);
+                wet = lowPass.process(wet);
 
-            // Very gentle, asymmetric soft clipping adds a little rasp without
-            // destroying consonants or making the recording sound like static.
-            double driven = sample + 0.035 * sample * sample;
-            double clipped = Math.tanh(driven * 1.65) / normalization;
-            sample = sample * 0.88 + clipped * 0.12;
+                // A small, adjustable reduction in bit depth adds grain without
+                // replacing the consonant detail that makes words understandable.
+                double quantized = Math.rint(wet * quantizationLevels) / quantizationLevels;
+                wet += (quantized - wet) * roughnessBlend;
 
-            // A small amount of low-resolution texture, blended in quietly.
-            double quantized = Math.rint(sample * 1023.0) / 1023.0;
-            sample = sample * 0.98 + quantized * 0.02;
+                // Slow amplitude flutter adds a little irregularity to the wet voice.
+                double time = i / (double) SAMPLE_RATE;
+                wet *= 1.0 + Math.sin(2.0 * Math.PI * FLUTTER_HZ * time) * flutterDepth;
 
-            // Fine flutter gives the voice a slightly squeaky, unstable edge.
-            double time = i / (double) SAMPLE_RATE;
-            double flutter = 1.0 + Math.sin(2.0 * Math.PI * FLUTTER_HZ * time) * FLUTTER_DEPTH;
-            sample *= flutter;
+                // 0% is the clean pitched human voice; 100% is the full parrot filter.
+                double value = dry + (wet - dry) * blend;
+                mixed[i] = value;
+                peak = Math.max(peak, Math.abs(value));
+            }
 
-            int pcm = (int) Math.round(sample * 32767.0);
-            output[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, pcm));
+            // Preserve headroom if resonances raise a particularly loud recording.
+            double outputGain = peak > 0.98 ? 0.98 / peak : 1.0;
+            short[] output = new short[mixed.length];
+            for (int i = 0; i < mixed.length; i++) {
+                long pcm = Math.round(mixed[i] * outputGain * 32767.0);
+                output[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, pcm));
+            }
+            Arrays.fill(mixed, 0.0);
+            return output;
+        } finally {
+            Arrays.fill(pitched, (short) 0);
         }
-        return output;
+    }
+
+    private record FilterSettings(int mixPercent, int nasal, int brightness, int roughness, int flutter) {
     }
 
     private static short[] pitchUp(short[] input, double pitchRatio) {
@@ -94,7 +185,7 @@ public final class ParrotVoiceProcessor {
         try {
             return stretchToLength(compressed, input.length);
         } finally {
-            java.util.Arrays.fill(compressed, (short) 0);
+            Arrays.fill(compressed, (short) 0);
         }
     }
 
@@ -109,7 +200,6 @@ public final class ParrotVoiceProcessor {
 
         int windowSize = Math.min(960, source.length);
         if (windowSize < 96) {
-            // Very short fallback: keep exact output duration for tiny samples.
             short[] result = new short[targetLength];
             for (int i = 0; i < targetLength; i++) {
                 double position = i * (source.length - 1.0) / Math.max(1, targetLength - 1);
@@ -139,8 +229,6 @@ public final class ParrotVoiceProcessor {
                 int to = Math.min(maxSourceStart, chosen + searchRadius);
                 double bestScore = -Double.MAX_VALUE;
 
-                // Sparse normalized cross-correlation is enough to align voiced
-                // cycles while keeping CPU cost low for longer phrases.
                 for (int candidate = from; candidate <= to; candidate += 2) {
                     double dot = 0.0;
                     double referenceEnergy = 1.0;
@@ -242,8 +330,6 @@ public final class ParrotVoiceProcessor {
             y2 = y1;
             y1 = output;
 
-            // Prevent a malformed or unexpectedly loud frame from destabilizing
-            // the next sample while preserving normal dynamics.
             if (!Double.isFinite(output)) {
                 x1 = x2 = y1 = y2 = 0.0;
                 return 0.0;

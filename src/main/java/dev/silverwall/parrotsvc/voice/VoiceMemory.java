@@ -43,7 +43,6 @@ public final class VoiceMemory {
     private static final long END_OF_PHRASE_NANOS = 600_000_000L;
     private static final double LEARN_RADIUS = 12.0;
     private static final float PLAYBACK_DISTANCE = 20.0F;
-    private static final float PITCH_RATIO = 1.28F;
 
     private static final Map<UUID, CaptureSession> SESSIONS = new ConcurrentHashMap<>();
     private static volatile int maxWordsPerParrot = 10_000;
@@ -66,6 +65,8 @@ public final class VoiceMemory {
             int parsed;
             try {
                 parsed = Integer.parseInt(configured.trim());
+                // 150 was the previous generated default; migrate it to the new 10k default.
+                if (parsed == 150) parsed = 10_000;
             } catch (NumberFormatException exception) {
                 parsed = 10_000;
             }

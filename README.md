@@ -16,7 +16,7 @@ A server-side Fabric 1.21.1 mod that lets Smart Parrots learn and imitate consen
 ## Smart Parrot memory
 
 - Each parrot has its own independent memory keyed by its Minecraft entity UUID. Its memory survives owner disconnects and server restarts.
-- Each parrot remembers up to 10,000 distinct words by default. The limit is configurable in `config/parrot-svc/voice-memory.properties` with `max-words-per-parrot=10000` (allowed range: 1–10000). Existing installations that already have this setting keep their configured value; change it to `10000` to use the new limit. Restart after editing.
+- Each parrot remembers up to 10,000 distinct words by default. The limit is configurable in `config/parrot-svc/voice-memory.properties` with `max-words-per-parrot=10000` (allowed range: 1–10000). Existing installations with the previous generated default of `150` are upgraded to `10000`; other custom values are preserved. Restart after editing.
 - A word can retain up to three speaker recordings. When composing or repeating words, the parrot prefers its tamed owner’s recording when available; otherwise it uses the newest available speaker recording.
 - Words are stored lowercase without acute accents or umlauts, while preserving `ñ`. Thus `dormiré`, `dormire` and `dórmire` match the same word, but `año` and `ano` remain different.
 - Natural multi-word utterances are stored as their own phrase recordings. The newest clean owner recording has priority over a phrase assembled from fragments or one containing visitor audio.

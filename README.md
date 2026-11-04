@@ -48,6 +48,41 @@ A server-side Fabric 1.21.1 mod that lets Smart Parrots learn and imitate consen
 
 Playback raises the voice pitch by 1.8× while preserving the original phrase duration; it does not make the parrot speak faster. The existing storage format and playback tempo are unchanged.\n\nThe recognition model can mishear words, especially with background noise, overlapping voices or fast speech. The built-in example phrases are goals to teach, not synthetic voice lines: the mod needs consented recordings before it can reproduce a phrase in a player's voice.
 
+## Parrot voice tone filters
+
+The playback DSP now has a speech-preserving parrot-tone chain. It keeps the learned human recording as the intelligibility reference and blends it with a filtered version. It does not overlay separate squawks or replace speech with birdsong, and it is not a trained parrot-voice model.
+
+- The original learned samples are never rewritten. Pitch and timbre processing are applied in memory only when the parrot plays a phrase.
+- Pitch remains 1.8× with the original duration preserved.
+- On first playback, the mod creates `config/parrot-svc/voice-filters.properties`. Edit the values below and restart the server to apply them:
+
+```properties
+mix-percent=50
+nasal=45
+brightness=25
+roughness=12
+flutter=8
+```
+
+- `mix-percent`: dry/wet blend. 0 is the clean pitch-shifted player voice; 100 is the full parrot filter.
+- `nasal`: broad vocal resonances that add a nasal/beak-like quality.
+- `brightness`: upper-mid presence.
+- `roughness`: subtle quantized grain.
+- `flutter`: slight 5.5 Hz amplitude irregularity.
+
+All five controls accept values from 0 to 100. The defaults deliberately stay gentle to protect speech intelligibility. The `.psvc` file format, learned recordings and stored audio are unchanged.
+
+### Audacity 4 preview effect
+
+The repository includes `audacity/ParrotVoiceTone.ny`, a Nyquist effect with the same control names and defaults so you can tune the tone before changing the server config.
+
+1. In Audacity, open **Tools → Nyquist Plugin Installer**.
+2. Browse to `audacity/ParrotVoiceTone.ny`, install it, then restart Audacity. Enable it in Plugin Manager if needed.
+3. Work on a duplicate of your voice recording. To match the mod's pitch, apply **Effect → Pitch and Tempo → Change Pitch** with **+80%** (1.8×) while preserving duration.
+4. Apply **Parrot Voice Tone (PSVC)** and adjust its mix, nasal, brightness, roughness and flutter controls.
+
+Nyquist effects process the selected audio offline; they are not live microphone filters. Audacity's Nyquist EQ uses its own filter implementation, so the preview is intended to match the mod's controls and general character rather than guarantee bit-identical output.
+
 ## Build
 
 Requires Java 21, Gradle 8.12+, Minecraft 1.21.1 and Fabric. Vosk Java and JNA are included as nested dependencies. The model itself is downloaded from the official Vosk model host on first startup.

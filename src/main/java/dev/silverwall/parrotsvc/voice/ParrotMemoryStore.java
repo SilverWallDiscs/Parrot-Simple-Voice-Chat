@@ -41,18 +41,18 @@ public final class ParrotMemoryStore {
     private static final int MAX_PHRASE_FRAGMENTS = 4;
     private static final int MAX_PHRASE_WORDS = 8;
     private static final int MAX_PHRASE_SECONDS = 8;
-    private static final int MAX_WORDS_PER_FILE = 5000;
+    private static final int MAX_WORDS_PER_FILE = 10_000;
     private static final int MAX_PHRASES_PER_FILE = 20000;
     private static final long MAX_PHRASE_AUDIO_BYTES = 40L * 1024L * 1024L;
     private static final int MAX_BLOB_BYTES = 1_000_000;
-    private static final long MAX_FILE_BYTES = 64L * 1024L * 1024L;
+    private static final long MAX_FILE_BYTES = 512L * 1024L * 1024L;
     private static final int SEPARATOR_SAMPLES = SOURCE_RATE / 20;
 
     private static final Map<UUID, ParrotMemory> MEMORIES = new ConcurrentHashMap<>();
     private static final Map<UUID, ConsentState> CONSENTS = new ConcurrentHashMap<>();
     private static Path parrotsDirectory;
     private static Path consentFile;
-    private static int maxWordsPerParrot = 150;
+    private static int maxWordsPerParrot = 10_000;
 
     private ParrotMemoryStore() {
     }

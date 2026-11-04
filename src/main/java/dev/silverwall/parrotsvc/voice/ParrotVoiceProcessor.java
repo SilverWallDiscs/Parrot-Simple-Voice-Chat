@@ -9,8 +9,7 @@ package dev.silverwall.parrotsvc.voice;
  */
 public final class ParrotVoiceProcessor {
     private static final int SAMPLE_RATE = 48_000;
-    private static final double MIN_PARROT_PITCH = 1.40; // slower, subtle parrot imitation
-    private static final double MAX_PARROT_PITCH = 1.60; // upper bound keeps the phrase more intelligible
+    private static final double PARROT_PITCH_RATIO = 1.8; // raise pitch while preserving the original duration
     private static final double VIBRATO_HZ = 6.2;
     private static final double VIBRATO_DEPTH_SAMPLES = 1.6;
     private static final double FLUTTER_HZ = 17.0;
@@ -24,11 +23,9 @@ public final class ParrotVoiceProcessor {
             return new short[0];
         }
 
-        // Choose one Minecraft-like pitch multiplier per imitation, not per
-        // sample. The vanilla zombie imitation is centered around 1.8x.
-        double pitchRatio = java.util.concurrent.ThreadLocalRandom.current()
-                .nextDouble(MIN_PARROT_PITCH, MAX_PARROT_PITCH);
-        short[] pitched = pitchUp(input, pitchRatio);
+        // Fixed 1.8x pitch. WSOLA restores the original duration, so the
+        // parrot sounds higher without speaking faster or shortening phrases.
+        short[] pitched = pitchUp(input, PARROT_PITCH_RATIO);
         Biquad highPass = Biquad.highPass(SAMPLE_RATE, 300.0, 0.707);
         Biquad lowPass = Biquad.lowPass(SAMPLE_RATE, 5_000.0, 0.707);
 
@@ -75,10 +72,10 @@ public final class ParrotVoiceProcessor {
     }
 
     private static short[] pitchUp(short[] input, double pitchRatio) {
-        int outputLength = Math.max(1, (int) Math.ceil(input.length / pitchRatio));
-        short[] output = new short[outputLength];
+        int compressedLength = Math.max(1, (int) Math.ceil(input.length / pitchRatio));
+        short[] compressed = new short[compressedLength];
 
-        for (int i = 0; i < outputLength; i++) {
+        for (int i = 0; i < compressedLength; i++) {
             double basePosition = i * pitchRatio;
             double vibrato = Math.sin(2.0 * Math.PI * VIBRATO_HZ * i / SAMPLE_RATE)
                     * VIBRATO_DEPTH_SAMPLES;
@@ -88,9 +85,101 @@ public final class ParrotVoiceProcessor {
             int right = Math.min(left + 1, input.length - 1);
             double fraction = position - left;
             double value = input[left] + (input[right] - input[left]) * fraction;
-            output[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, Math.round(value)));
+            compressed[i] = (short) Math.max(Short.MIN_VALUE,
+                    Math.min(Short.MAX_VALUE, Math.round(value)));
         }
-        return output;
+
+        // Pitch shifting by resampling shortens the clip. WSOLA stretches those
+        // high-pitched grains back to the input length without lowering pitch.
+        try {
+            return stretchToLength(compressed, input.length);
+        } finally {
+            java.util.Arrays.fill(compressed, (short) 0);
+        }
+    }
+
+    /**
+     * Waveform Similarity Overlap-Add (WSOLA). Frames keep their sample rate;
+     * only their overlap positions change, preserving pitch while changing
+     * duration. The normalized output length is exactly the requested length.
+     */
+    private static short[] stretchToLength(short[] source, int targetLength) {
+        if (targetLength <= 0 || source.length == 0) return new short[0];
+        if (source.length == targetLength) return source.clone();
+
+        int windowSize = Math.min(960, source.length);
+        if (windowSize < 96) {
+            // Very short fallback: keep exact output duration for tiny samples.
+            short[] result = new short[targetLength];
+            for (int i = 0; i < targetLength; i++) {
+                double position = i * (source.length - 1.0) / Math.max(1, targetLength - 1);
+                int left = (int) position;
+                int right = Math.min(left + 1, source.length - 1);
+                double fraction = position - left;
+                result[i] = (short) Math.round(source[left]
+                        + (source[right] - source[left]) * fraction);
+            }
+            return result;
+        }
+
+        int synthesisHop = Math.max(24, windowSize / 4);
+        int overlap = windowSize - synthesisHop;
+        int searchRadius = Math.max(8, windowSize / 12);
+        int maxSourceStart = Math.max(0, source.length - windowSize);
+        double stretchRatio = targetLength / (double) source.length;
+        double[] accumulated = new double[targetLength];
+        double[] weights = new double[targetLength];
+
+        for (int outputStart = 0; outputStart < targetLength; outputStart += synthesisHop) {
+            int expected = (int) Math.round(outputStart / stretchRatio);
+            int chosen = Math.max(0, Math.min(maxSourceStart, expected));
+
+            if (outputStart > 0 && maxSourceStart > 0) {
+                int from = Math.max(0, chosen - searchRadius);
+                int to = Math.min(maxSourceStart, chosen + searchRadius);
+                double bestScore = -Double.MAX_VALUE;
+
+                // Sparse normalized cross-correlation is enough to align voiced
+                // cycles while keeping CPU cost low for longer phrases.
+                for (int candidate = from; candidate <= to; candidate += 2) {
+                    double dot = 0.0;
+                    double referenceEnergy = 1.0;
+                    double candidateEnergy = 1.0;
+                    for (int k = 0; k < overlap; k += 4) {
+                        int outputIndex = outputStart + k;
+                        if (outputIndex >= targetLength || weights[outputIndex] <= 1.0e-9) continue;
+                        double reference = accumulated[outputIndex] / weights[outputIndex];
+                        double sample = source[candidate + k];
+                        dot += reference * sample;
+                        referenceEnergy += reference * reference;
+                        candidateEnergy += sample * sample;
+                    }
+                    double score = dot / Math.sqrt(referenceEnergy * candidateEnergy);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        chosen = candidate;
+                    }
+                }
+            }
+
+            for (int k = 0; k < windowSize && outputStart + k < targetLength; k++) {
+                int sourceIndex = Math.min(source.length - 1, chosen + k);
+                double window = 0.5 - 0.5 * Math.cos(
+                        2.0 * Math.PI * (k + 0.5) / windowSize);
+                int outputIndex = outputStart + k;
+                accumulated[outputIndex] += source[sourceIndex] * window;
+                weights[outputIndex] += window;
+            }
+        }
+
+        short[] result = new short[targetLength];
+        for (int i = 0; i < targetLength; i++) {
+            double value = weights[i] > 1.0e-9 ? accumulated[i] / weights[i]
+                    : (i > 0 ? result[i - 1] : source[0]);
+            result[i] = (short) Math.max(Short.MIN_VALUE,
+                    Math.min(Short.MAX_VALUE, Math.round(value)));
+        }
+        return result;
     }
 
     /** RBJ cookbook biquad, direct-form I. */

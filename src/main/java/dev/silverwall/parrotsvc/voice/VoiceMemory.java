@@ -46,7 +46,7 @@ public final class VoiceMemory {
     private static final float PITCH_RATIO = 1.28F;
 
     private static final Map<UUID, CaptureSession> SESSIONS = new ConcurrentHashMap<>();
-    private static volatile int maxWordsPerParrot = 150;
+    private static volatile int maxWordsPerParrot = 10_000;
 
     private VoiceMemory() {
     }
@@ -62,14 +62,14 @@ public final class VoiceMemory {
                     properties.load(input);
                 }
             }
-            String configured = properties.getProperty("max-words-per-parrot", "150");
+            String configured = properties.getProperty("max-words-per-parrot", "10000");
             int parsed;
             try {
                 parsed = Integer.parseInt(configured.trim());
             } catch (NumberFormatException exception) {
-                parsed = 150;
+                parsed = 10_000;
             }
-            maxWordsPerParrot = Math.max(1, Math.min(5000, parsed));
+            maxWordsPerParrot = Math.max(1, Math.min(10_000, parsed));
             if (!Integer.toString(maxWordsPerParrot).equals(configured.trim())) {
                 properties.setProperty("max-words-per-parrot", Integer.toString(maxWordsPerParrot));
                 try (OutputStream output = Files.newOutputStream(configFile)) {
@@ -82,7 +82,7 @@ public final class VoiceMemory {
                 }
             }
         } catch (IOException exception) {
-            maxWordsPerParrot = 150;
+            maxWordsPerParrot = 10_000;
             LOGGER.warn("Could not load {}; using default memory settings", configFile, exception);
         }
         ParrotMemoryStore.initialize(configDir, maxWordsPerParrot);

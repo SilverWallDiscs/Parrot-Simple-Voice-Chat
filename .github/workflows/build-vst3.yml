@@ -1,0 +1,40 @@
+name: Build Audacity VST3
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'audacity-vst3/**'
+      - '.github/workflows/build-vst3.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'audacity-vst3/**'
+      - '.github/workflows/build-vst3.yml'
+  workflow_dispatch:
+
+jobs:
+  windows-vst3:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch Steinberg VST3 SDK
+        shell: pwsh
+        run: git clone --depth 1 --recursive https://github.com/steinbergmedia/vst3sdk.git vst3sdk
+      - name: Configure VST3
+        shell: pwsh
+        run: cmake -S audacity-vst3 -B build-vst3 -A x64 -DVST3_SDK_ROOT="$PWD/vst3sdk" -DSMTG_CREATE_PLUGIN_LINK=OFF
+      - name: Build VST3
+        run: cmake --build build-vst3 --config Release --parallel
+      - name: Package VST3
+        shell: pwsh
+        run: |
+          $plugin = Get-ChildItem -Path build-vst3 -Directory -Filter 'ParrotVoiceTone.vst3' -Recurse | Select-Object -First 1
+          if (-not $plugin) { throw 'ParrotVoiceTone.vst3 was not produced by the build.' }
+          Compress-Archive -Path $plugin.FullName -DestinationPath ParrotVoiceTone-win-x64.zip -Force
+      - name: Upload VST3 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParrotVoiceTone-win-x64
+          path: ParrotVoiceTone-win-x64.zip
+          if-no-files-found: error

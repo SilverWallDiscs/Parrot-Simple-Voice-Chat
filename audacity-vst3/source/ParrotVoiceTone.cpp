@@ -266,6 +266,8 @@ public:
         sampleSize_ = setup.symbolicSampleSize;
         for (auto& channel : channels_) {
             channel.reset();
+            channel.rumbleFilter.highPass(sampleRate_, 78.0, 0.707);
+            channel.consonantHighPass.highPass(sampleRate_, 2450.0, 0.707);
         }
         return kResultOk;
     }

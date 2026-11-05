@@ -25,20 +25,20 @@ enum ParameterId : ParamID {
     kVocalIrregularity = 8
 };
 
-constexpr double kDefaultMix = 62.0;
-constexpr double kDefaultSyrinxEdge = 24.0;
-constexpr double kDefaultTrachealLength = 55.0;
-constexpr double kDefaultOecVolume = 45.0;
-constexpr double kDefaultTonguePosition = 58.0;
-constexpr double kDefaultBeakOpening = 38.0;
-constexpr double kDefaultFormantStrength = 55.0;
-constexpr double kDefaultConsonantDetail = 62.0;
-constexpr double kDefaultVocalIrregularity = 5.0;
+constexpr double kDefaultMix = 92.0;
+constexpr double kDefaultSyrinxEdge = 42.0;
+constexpr double kDefaultTrachealLength = 58.0;
+constexpr double kDefaultOecVolume = 56.0;
+constexpr double kDefaultTonguePosition = 62.0;
+constexpr double kDefaultBeakOpening = 48.0;
+constexpr double kDefaultFormantStrength = 76.0;
+constexpr double kDefaultConsonantDetail = 74.0;
+constexpr double kDefaultVocalIrregularity = 8.0;
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr int32 kMaximumChannels = 64;
 constexpr int32 kTractUpdateInterval = 64;
-const FUID kControllerUID(0xB91D37B5, 0x4A2F4F9D, 0x8E1B6C50, 0xD2E7A491);
+const FUID kControllerUID(0xB91D37B7, 0x4A2F4F9D, 0x8E1B6C50, 0xD2E7A491);
 
 double clamp01(double value) {
     return std::max(0.0, std::min(1.0, value));
@@ -228,31 +228,8 @@ public:
             return result;
         }
 
-        addAudioInput(STR16("Audio In"), SpeakerArr::kStereo);
-        addAudioOutput(STR16("Audio Out"), SpeakerArr::kStereo);
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API setBusArrangements(SpeakerArrangement* inputs, int32 numIns,
-                                           SpeakerArrangement* outputs, int32 numOuts) SMTG_OVERRIDE {
-        if (numIns != 1 || numOuts != 1) {
-            return kResultFalse;
-        }
-
-        const int32 inputCount = SpeakerArr::getChannelCount(inputs[0]);
-        const int32 outputCount = SpeakerArr::getChannelCount(outputs[0]);
-        if (inputCount != outputCount || (inputCount != 1 && inputCount != 2)) {
-            return kResultFalse;
-        }
-
-        auto* inputBus = FCast<AudioBus>(audioInputs.at(0));
-        auto* outputBus = FCast<AudioBus>(audioOutputs.at(0));
-        if (!inputBus || !outputBus) {
-            return kResultFalse;
-        }
-
-        inputBus->setArrangement(inputs[0]);
-        outputBus->setArrangement(outputs[0]);
+        addAudioInput(STR16("Audio In"), SpeakerArr::kMono);
+        addAudioOutput(STR16("Audio Out"), SpeakerArr::kMono);
         return kResultOk;
     }
 
@@ -361,29 +338,29 @@ private:
         // Longer tracheal paths lower the first resonance. A larger OEC cavity
         // lowers its principal resonance; tongue and beak positions move the
         // higher resonances independently.
-        const double syllableMotion = (state.articulation - 0.30) * 0.16;
+        const double syllableMotion = (state.articulation - 0.25) * 0.30;
         const double trachealFrequency =
-            (1320.0 - 520.0 * state.smoothedTrachealLength) * (1.0 + syllableMotion * 0.35);
+            (1500.0 - 720.0 * state.smoothedTrachealLength) * (1.0 + syllableMotion * 0.35);
         const double oecFrequency =
-            (2580.0 - 980.0 * state.smoothedOecVolume) * (1.0 + syllableMotion * 0.45);
+            (3000.0 - 1320.0 * state.smoothedOecVolume) * (1.0 + syllableMotion * 0.45);
         const double tongueLowFrequency =
-            (1780.0 + 1500.0 * state.smoothedTonguePosition) * (1.0 + syllableMotion * 0.55);
+            (1450.0 + 2150.0 * state.smoothedTonguePosition) * (1.0 + syllableMotion * 0.55);
         const double tongueHighFrequency =
-            (3350.0 + 2050.0 * state.smoothedTonguePosition) * (1.0 + syllableMotion * 0.70);
+            (2900.0 + 2750.0 * state.smoothedTonguePosition) * (1.0 + syllableMotion * 0.70);
         const double beakFrequency =
-            (4650.0 + 2550.0 * state.smoothedBeakOpening) * (1.0 + syllableMotion * 0.60);
+            (4100.0 + 3500.0 * state.smoothedBeakOpening) * (1.0 + syllableMotion * 0.60);
 
         const double strength = state.smoothedFormantStrength;
-        state.trachealResonance.peaking(sampleRate_, trachealFrequency, 1.65,
-                                         0.5 + 2.8 * strength);
-        state.oecResonance.peaking(sampleRate_, oecFrequency, 1.45,
-                                    0.5 + 3.2 * strength);
-        state.tongueFormantLow.peaking(sampleRate_, tongueLowFrequency, 1.35,
-                                        0.8 + 3.4 * strength);
-        state.tongueFormantHigh.peaking(sampleRate_, tongueHighFrequency, 1.20,
-                                         0.4 + 2.5 * strength);
-        state.beakFormant.peaking(sampleRate_, beakFrequency, 1.05,
-                                   0.3 + 2.2 * strength * state.smoothedBeakOpening);
+        state.trachealResonance.peaking(sampleRate_, trachealFrequency, 1.55,
+                                         1.5 + 6.0 * strength);
+        state.oecResonance.peaking(sampleRate_, oecFrequency, 1.35,
+                                    1.5 + 7.0 * strength);
+        state.tongueFormantLow.peaking(sampleRate_, tongueLowFrequency, 1.25,
+                                        1.5 + 7.5 * strength);
+        state.tongueFormantHigh.peaking(sampleRate_, tongueHighFrequency, 1.15,
+                                         1.0 + 6.0 * strength);
+        state.beakFormant.peaking(sampleRate_, beakFrequency, 1.00,
+                                   1.0 + 5.5 * strength * state.smoothedBeakOpening);
     }
 
     template <typename Sample>
@@ -444,10 +421,19 @@ private:
             if (state.irregularPhaseB >= 2.0 * kPi) state.irregularPhaseB -= 2.0 * kPi;
 
             const double edge = state.smoothedSyrinxEdge;
-            const double sourceMotion = 1.0 + irregularity * edge * state.smoothedVocalIrregularity * 0.012;
-            const double driven = dry * sourceMotion
-                + edge * (0.16 * dry * dry - 0.20 * dry * dry * dry);
-            const double source = dry + (driven - dry) * (0.25 + 0.35 * edge);
+            const double sourceMotion =
+                1.0 + irregularity * edge * state.smoothedVocalIrregularity * 0.025;
+
+            // A level-stable, asymmetrical soft clip models a richer voiced
+            // source while preserving low-level speech; unlike hard quantizing,
+            // it adds no stair-step grain and does not shift the fundamental.
+            const double drive = 2.0 + 5.0 * edge;
+            const double drivenInput = dry * drive;
+            const double asymmetry = 0.10 + 0.18 * edge;
+            const double shaped = std::tanh(
+                drivenInput + asymmetry * drivenInput * std::abs(drivenInput)) / drive;
+            const double harmonicBlend = 0.18 + 0.62 * edge;
+            const double source = dry + (shaped * sourceMotion - dry) * harmonicBlend;
 
             double wet = state.rumbleFilter.process(source);
             wet = state.trachealResonance.process(wet);
@@ -458,7 +444,7 @@ private:
 
             // Keep unprocessed high-frequency articulation in parallel. This
             // prevents the moving resonances from smearing / swallowing s, f, t.
-            wet += consonant * state.smoothedConsonantDetail * 0.22;
+            wet += consonant * state.smoothedConsonantDetail * 0.34;
 
             double result = dry + (wet - dry) * state.smoothedMix;
             const double outputMagnitude = std::abs(result);
@@ -494,17 +480,17 @@ using namespace Steinberg::Vst;
 
 BEGIN_FACTORY_DEF("SilverWallDiscs", "https://github.com/SilverWallDiscs", "")
 
-DEF_CLASS2(INLINE_UID(0xB91D37B4, 0x4A2F4F9D, 0x8E1B6C50, 0xD2E7A491),
+DEF_CLASS2(INLINE_UID(0xB91D37B6, 0x4A2F4F9D, 0x8E1B6C50, 0xD2E7A491),
            PClassInfo::kManyInstances,
            kVstAudioEffectClass,
            "Parrot Voice Tone",
-           0,
+           Vst::kDistributable,
            "Fx",
-           "0.4.0",
+           "0.4.1",
            kVstVersionString,
            ParrotVoiceTone::createInstance)
 
-DEF_CLASS2(INLINE_UID(0xB91D37B5, 0x4A2F4F9D, 0x8E1B6C50, 0xD2E7A491),
+DEF_CLASS2(INLINE_UID(0xB91D37B7, 0x4A2F4F9D, 0x8E1B6C50, 0xD2E7A491),
            PClassInfo::kManyInstances,
            kVstComponentControllerClass,
            "Parrot Voice Tone Controller",

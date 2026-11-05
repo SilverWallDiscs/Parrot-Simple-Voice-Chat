@@ -17,17 +17,27 @@ enum ParameterId : ParamID {
     kNasal = 1,
     kBrightness = 2,
     kRoughness = 3,
-    kFlutter = 4
+    kFlutter = 4,
+    kPitch = 5,
+    kBeak = 6,
+    kBody = 7
 };
 
-constexpr double kDefaultMix = 85.0;
-constexpr double kDefaultNasal = 75.0;
-constexpr double kDefaultBrightness = 60.0;
-constexpr double kDefaultRoughness = 38.0;
-constexpr double kDefaultFlutter = 28.0;
-constexpr double kFlutterHz = 5.8;
+// Gentle starting values are intended to sound like a lifted, nasal voice,
+// not a hard robotic formant effect. Every value can be adjusted in Audacity.
+constexpr double kDefaultMix = 55.0;
+constexpr double kDefaultNasal = 25.0;
+constexpr double kDefaultBrightness = 15.0;
+constexpr double kDefaultRoughness = 3.0;
+constexpr double kDefaultFlutter = 1.0;
+constexpr double kDefaultPitchPercent = 106.0;
+constexpr double kDefaultBeak = 15.0;
+constexpr double kDefaultBody = 35.0;
+constexpr double kFlutterHz = 5.2;
 constexpr double kPi = 3.14159265358979323846;
-constexpr double kPitchRatio = 1.8;
+constexpr double kMinimumPitchRatio = 1.0;
+constexpr double kMaximumPitchRatio = 1.6;
+constexpr double kPitchSmoothingSeconds = 0.035;
 constexpr int32 kPitchDelaySamples = 1024;
 constexpr int32 kPitchBufferSize = 2048;
 constexpr int32 kMaximumChannels = 64;
@@ -104,10 +114,12 @@ struct ChannelState {
     Biquad nasalEdge;
     Biquad formantPeak;
     Biquad beakBrightness;
+    Biquad voiceBody;
     std::array<double, kPitchBufferSize> pitchBuffer {};
     int32 pitchWritePosition {0};
     double pitchPhaseA {0.0};
     double pitchPhaseB {0.5};
+    double smoothedPitchRatio {kDefaultPitchPercent / 100.0};
     double flutterPhase {0.0};
 
     void reset() {
@@ -118,10 +130,12 @@ struct ChannelState {
         nasalEdge.reset();
         formantPeak.reset();
         beakBrightness.reset();
+        voiceBody.reset();
         pitchBuffer.fill(0.0);
         pitchWritePosition = 0;
         pitchPhaseA = 0.0;
         pitchPhaseB = 0.5;
+        smoothedPitchRatio = kDefaultPitchPercent / 100.0;
         flutterPhase = 0.0;
     }
 };
@@ -143,16 +157,25 @@ public:
         addAudioOutput(STR16("Audio Out"), SpeakerArr::kStereo);
 
         parameters.addParameter(new RangeParameter(
-            USTRING("Human / Parrot"), kMix, USTRING("%"), 0.0, 100.0,
+            USTRING("Parrot Amount"), kMix, USTRING("%"), 0.0, 100.0,
             kDefaultMix, kStepCountContinuous, ParameterInfo::kCanAutomate));
+        parameters.addParameter(new RangeParameter(
+            USTRING("Pitch Lift"), kPitch, USTRING("%"), 100.0, 160.0,
+            kDefaultPitchPercent, kStepCountContinuous, ParameterInfo::kCanAutomate));
         parameters.addParameter(new RangeParameter(
             USTRING("Nasal Resonance"), kNasal, USTRING("%"), 0.0, 100.0,
             kDefaultNasal, kStepCountContinuous, ParameterInfo::kCanAutomate));
         parameters.addParameter(new RangeParameter(
-            USTRING("Bright Beak Edge"), kBrightness, USTRING("%"), 0.0, 100.0,
+            USTRING("Beak Resonance"), kBeak, USTRING("%"), 0.0, 100.0,
+            kDefaultBeak, kStepCountContinuous, ParameterInfo::kCanAutomate));
+        parameters.addParameter(new RangeParameter(
+            USTRING("Brightness"), kBrightness, USTRING("%"), 0.0, 100.0,
             kDefaultBrightness, kStepCountContinuous, ParameterInfo::kCanAutomate));
         parameters.addParameter(new RangeParameter(
-            USTRING("Roughness / Grain"), kRoughness, USTRING("%"), 0.0, 100.0,
+            USTRING("Voice Body"), kBody, USTRING("%"), 0.0, 100.0,
+            kDefaultBody, kStepCountContinuous, ParameterInfo::kCanAutomate));
+        parameters.addParameter(new RangeParameter(
+            USTRING("Roughness"), kRoughness, USTRING("%"), 0.0, 100.0,
             kDefaultRoughness, kStepCountContinuous, ParameterInfo::kCanAutomate));
         parameters.addParameter(new RangeParameter(
             USTRING("Vocal Flutter"), kFlutter, USTRING("%"), 0.0, 100.0,
@@ -271,13 +294,20 @@ private:
             if (queue->getPoint(queue->getPointCount() - 1, sampleOffset, value) != kResultTrue) {
                 continue;
             }
-            const double plain = clamp01(value) * 100.0;
+            const double normalized = clamp01(value);
+            const double plain = normalized * 100.0;
             switch (queue->getParameterId()) {
-                case kMix: mix_ = plain / 100.0; break;
-                case kNasal: nasal_ = plain / 100.0; break;
-                case kBrightness: brightness_ = plain / 100.0; break;
-                case kRoughness: roughness_ = plain / 100.0; break;
-                case kFlutter: flutter_ = plain / 100.0; break;
+                case kMix: mix_ = normalized; break;
+                case kPitch:
+                    pitchRatio_ = kMinimumPitchRatio
+                        + normalized * (kMaximumPitchRatio - kMinimumPitchRatio);
+                    break;
+                case kNasal: nasal_ = normalized; break;
+                case kBeak: beak_ = normalized; break;
+                case kBrightness: brightness_ = normalized; break;
+                case kBody: body_ = normalized; break;
+                case kRoughness: roughness_ = normalized; break;
+                case kFlutter: flutter_ = normalized; break;
                 default: break;
             }
         }
@@ -287,24 +317,38 @@ private:
         const int32 count = std::min(channelCount, kMaximumChannels);
         for (int32 index = 0; index < count; ++index) {
             auto& channel = channels_[index];
-            channel.highPass.highPass(sampleRate_, 170.0, 0.707);
-            channel.lowPass.lowPass(sampleRate_, 8800.0, 0.707);
-            // Stronger, broad vocal-tract resonances: a nasal body, a forward
-            // beak resonance and an upper "ring" that remain speech-shaped.
-            channel.chestCut.peaking(sampleRate_, 500.0, 1.0, -5.5 * nasal_);
-            channel.nasalBody.peaking(sampleRate_, 1200.0, 1.25, 8.0 * nasal_);
-            channel.nasalEdge.peaking(sampleRate_, 2450.0, 1.15, 9.0 * nasal_);
-            channel.formantPeak.peaking(sampleRate_, 3400.0, 1.3, 6.0 * nasal_);
-            channel.beakBrightness.peaking(sampleRate_, 4300.0, 1.0, 8.0 * brightness_);
+            channel.highPass.highPass(sampleRate_, 105.0, 0.707);
+            channel.lowPass.lowPass(sampleRate_, 10500.0, 0.707);
+
+            // Gentle vocal-tract shaping. Nasal and beak resonances are kept
+            // independently adjustable so the voice does not become a single
+            // exaggerated "robot formant" curve.
+            channel.chestCut.peaking(sampleRate_, 520.0, 0.9, -2.4 * nasal_);
+            channel.nasalBody.peaking(sampleRate_, 1150.0, 1.0, 4.2 * nasal_);
+            channel.nasalEdge.peaking(sampleRate_, 2350.0, 0.95, 4.8 * beak_);
+            channel.formantPeak.peaking(sampleRate_, 3250.0, 1.0, 3.0 * beak_);
+            channel.beakBrightness.peaking(sampleRate_, 4400.0, 0.85, 4.2 * brightness_);
+            channel.voiceBody.peaking(sampleRate_, 820.0, 0.75, 3.0 * body_);
         }
     }
 
     double pitchUp(double input, ChannelState& state) {
+        // Smooth the pitch control so moving its slider cannot create abrupt
+        // phase jumps or zipper noise.
+        const double smoothing = 1.0 - std::exp(-1.0 / (sampleRate_ * kPitchSmoothingSeconds));
+        state.smoothedPitchRatio += (pitchRatio_ - state.smoothedPitchRatio) * smoothing;
+
+        if (state.smoothedPitchRatio <= 1.001) {
+            state.pitchBuffer[state.pitchWritePosition] = input;
+            state.pitchWritePosition = (state.pitchWritePosition + 1) % kPitchBufferSize;
+            return input;
+        }
+
         // Two overlapping delay taps read faster than the write head. Their
-        // cosine windows crossfade at the delay wrap, raising pitch without
-        // changing the duration of the recorded phrase.
+        // cosine windows crossfade at the delay wrap, raising pitch gently
+        // without changing the duration of the recorded phrase.
         state.pitchBuffer[state.pitchWritePosition] = input;
-        const double phaseStep = (kPitchRatio - 1.0) / (kPitchDelaySamples - 4.0);
+        const double phaseStep = (state.smoothedPitchRatio - 1.0) / (kPitchDelaySamples - 4.0);
         double sum = 0.0;
         double weightSum = 0.0;
 
@@ -350,6 +394,7 @@ private:
             wet = state.nasalEdge.process(wet);
             wet = state.formantPeak.process(wet);
             wet = state.beakBrightness.process(wet);
+            wet = state.voiceBody.process(wet);
             wet = state.lowPass.process(wet);
 
             // A restrained asymmetric waveshaper adds upper harmonics that make
@@ -367,7 +412,9 @@ private:
                 state.flutterPhase -= 2.0 * kPi;
             }
 
-            double result = pitched + (wet - pitched) * mix_;
+            // At 0% the original human recording is untouched. The pitch
+            // shifter and timbre chain enter together as the Parrot Amount rises.
+            double result = dry + (wet - dry) * mix_;
             const double magnitude = std::abs(result);
             if (magnitude > 0.97) {
                 result = std::copysign(0.97 + 0.03 * std::tanh((magnitude - 0.97) / 0.03), result);
@@ -379,8 +426,11 @@ private:
     double sampleRate_ {48000.0};
     int32 sampleSize_ {kSample32};
     double mix_ {kDefaultMix / 100.0};
+    double pitchRatio_ {kDefaultPitchPercent / 100.0};
     double nasal_ {kDefaultNasal / 100.0};
+    double beak_ {kDefaultBeak / 100.0};
     double brightness_ {kDefaultBrightness / 100.0};
+    double body_ {kDefaultBody / 100.0};
     double roughness_ {kDefaultRoughness / 100.0};
     double flutter_ {kDefaultFlutter / 100.0};
     std::array<ChannelState, kMaximumChannels> channels_ {};
@@ -399,7 +449,7 @@ DEF_CLASS2(INLINE_UID(0xB91D37A2, 0x4A2F4F9D, 0x8E1B6C50, 0xD2E7A491),
            "Parrot Voice Tone",
            0,
            "Fx",
-           "0.3.3",
+           "0.3.4",
            kVstVersionString,
            ParrotVoiceTone::createInstance)
 

@@ -139,6 +139,28 @@ public:
             return result;
         }
 
+        parameters.addParameter(new RangeParameter(
+            USTRING("Parrot Amount"), kMix, USTRING("%"), 0.0, 100.0,
+            kDefaultMix, kStepCountContinuous, ParameterInfo::kCanAutomate));
+        parameters.addParameter(new RangeParameter(
+            USTRING("Nasal Resonance"), kNasal, USTRING("%"), 0.0, 100.0,
+            kDefaultNasal, kStepCountContinuous, ParameterInfo::kCanAutomate));
+        parameters.addParameter(new RangeParameter(
+            USTRING("Beak Resonance"), kBeak, USTRING("%"), 0.0, 100.0,
+            kDefaultBeak, kStepCountContinuous, ParameterInfo::kCanAutomate));
+        parameters.addParameter(new RangeParameter(
+            USTRING("Brightness"), kBrightness, USTRING("%"), 0.0, 100.0,
+            kDefaultBrightness, kStepCountContinuous, ParameterInfo::kCanAutomate));
+        parameters.addParameter(new RangeParameter(
+            USTRING("Voice Body"), kBody, USTRING("%"), 0.0, 100.0,
+            kDefaultBody, kStepCountContinuous, ParameterInfo::kCanAutomate));
+        parameters.addParameter(new RangeParameter(
+            USTRING("Roughness"), kRoughness, USTRING("%"), 0.0, 100.0,
+            kDefaultRoughness, kStepCountContinuous, ParameterInfo::kCanAutomate));
+        parameters.addParameter(new RangeParameter(
+            USTRING("Vocal Flutter"), kFlutter, USTRING("%"), 0.0, 100.0,
+            kDefaultFlutter, kStepCountContinuous, ParameterInfo::kCanAutomate));
+
         return kResultOk;
     }
 };
@@ -161,28 +183,6 @@ public:
 
         addAudioInput(STR16("Audio In"), SpeakerArr::kStereo);
         addAudioOutput(STR16("Audio Out"), SpeakerArr::kStereo);
-
-        parameters.addParameter(new RangeParameter(
-            USTRING("Parrot Amount"), kMix, USTRING("%"), 0.0, 100.0,
-            kDefaultMix, kStepCountContinuous, ParameterInfo::kCanAutomate));
-        parameters.addParameter(new RangeParameter(
-            USTRING("Nasal Resonance"), kNasal, USTRING("%"), 0.0, 100.0,
-            kDefaultNasal, kStepCountContinuous, ParameterInfo::kCanAutomate));
-        parameters.addParameter(new RangeParameter(
-            USTRING("Beak Resonance"), kBeak, USTRING("%"), 0.0, 100.0,
-            kDefaultBeak, kStepCountContinuous, ParameterInfo::kCanAutomate));
-        parameters.addParameter(new RangeParameter(
-            USTRING("Brightness"), kBrightness, USTRING("%"), 0.0, 100.0,
-            kDefaultBrightness, kStepCountContinuous, ParameterInfo::kCanAutomate));
-        parameters.addParameter(new RangeParameter(
-            USTRING("Voice Body"), kBody, USTRING("%"), 0.0, 100.0,
-            kDefaultBody, kStepCountContinuous, ParameterInfo::kCanAutomate));
-        parameters.addParameter(new RangeParameter(
-            USTRING("Roughness"), kRoughness, USTRING("%"), 0.0, 100.0,
-            kDefaultRoughness, kStepCountContinuous, ParameterInfo::kCanAutomate));
-        parameters.addParameter(new RangeParameter(
-            USTRING("Vocal Flutter"), kFlutter, USTRING("%"), 0.0, 100.0,
-            kDefaultFlutter, kStepCountContinuous, ParameterInfo::kCanAutomate));
 
         return kResultOk;
     }

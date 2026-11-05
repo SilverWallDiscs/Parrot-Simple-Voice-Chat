@@ -95,7 +95,7 @@ C:\\Program Files\\Common Files\\VST3
 
 Restart Audacity 4, then open a track's **Effects** panel (or press `E`), choose **Add effect**, and select **Parrot Voice Tone**. Adjust the five controls while the track plays. The track's original waveform remains unchanged.
 
-The VST3 preview processes the parrot timbre filters in real time. The mod additionally applies its existing 1.8× pitch treatment before those filters; pitch shifting is not included in this first real-time Audacity VST3 build. The five timbre controls and their defaults are matched between the VST3 and the mod.
+The VST3 preview applies a real-time 1.8× pitch shift and the parrot-timbre filter chain while the track plays. It accepts mono or stereo tracks and both 32-bit and 64-bit audio buffers. Its starting preset is intentionally stronger so the change is clearly audible: mix 85, nasal 75, brightness 60, roughness 38 and flutter 28. The Minecraft mod still has its own default values in `voice-filters.properties`; the controls have the same meanings, but the two implementations are not yet bit-identical.
 
 Audacity's real-time track effects process playback of a recorded track. They do not act as a live microphone monitor while recording.
 

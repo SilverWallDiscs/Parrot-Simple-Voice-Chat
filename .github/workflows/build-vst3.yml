@@ -31,6 +31,15 @@ jobs:
         run: cmake -S vst3sdk -B build-vst3 -A x64 -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF -DSMTG_CREATE_PLUGIN_LINK=OFF
       - name: Build VST3
         run: cmake --build build-vst3 --config Release --parallel
+      - name: Validate VST3 bundle
+        shell: pwsh
+        run: |
+          $plugin = Get-ChildItem -Path build-vst3 -Directory -Filter 'ParrotVoiceTone.vst3' -Recurse | Select-Object -First 1
+          $validator = Get-ChildItem -Path build-vst3 -File -Filter 'validator.exe' -Recurse | Select-Object -First 1
+          if (-not $plugin) { throw 'ParrotVoiceTone.vst3 was not produced.' }
+          if (-not $validator) { throw 'Steinberg validator.exe was not produced.' }
+          & $validator.FullName $plugin.FullName
+          if ($LASTEXITCODE -ne 0) { throw "VST3 validator failed with exit code $LASTEXITCODE." }
       - name: Package VST3
         shell: pwsh
         run: |

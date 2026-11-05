@@ -239,7 +239,6 @@ private:
             }
         }
 
-        dataSilenceReset_ = false;
     }
 
     void readParameters(IParameterChanges* changes) {
@@ -328,7 +327,6 @@ private:
 
     double sampleRate_ {48000.0};
     int32 sampleSize_ {kSample32};
-    bool dataSilenceReset_ {false};
     double mix_ {kDefaultMix / 100.0};
     double nasal_ {kDefaultNasal / 100.0};
     double brightness_ {kDefaultBrightness / 100.0};

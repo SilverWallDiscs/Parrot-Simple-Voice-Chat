@@ -175,10 +175,6 @@ public:
             return kResultFalse;
         }
 
-        if (audioInputs.empty() || audioOutputs.empty()) {
-            return kResultFalse;
-        }
-
         auto* inputBus = FCast<AudioBus>(audioInputs.at(0));
         auto* outputBus = FCast<AudioBus>(audioOutputs.at(0));
         if (!inputBus || !outputBus) {

@@ -1,6 +1,7 @@
 #include "public.sdk/source/main/pluginfactory.h"
 #include "public.sdk/source/vst/vstsinglecomponenteffect.h"
 #include "pluginterfaces/base/ustring.h"
+#include "pluginterfaces/vst/ivstparameterchanges.h"
 
 #include <algorithm>
 #include <array>

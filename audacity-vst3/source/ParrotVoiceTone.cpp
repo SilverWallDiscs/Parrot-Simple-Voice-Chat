@@ -201,11 +201,6 @@ public:
         return kResultOk;
     }
 
-    // The dual-head pitch shifter has an average delay of about half its delay span.
-    uint32 PLUGIN_API getLatencySamples() SMTG_OVERRIDE {
-        return static_cast<uint32>(kPitchDelaySamples / 2);
-    }
-
     tresult PLUGIN_API canProcessSampleSize(int32 symbolicSampleSize) SMTG_OVERRIDE {
         return (symbolicSampleSize == kSample32 || symbolicSampleSize == kSample64)
             ? kResultTrue : kResultFalse;

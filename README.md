@@ -93,14 +93,13 @@ The Windows x64 VST3 is built by the **Build Audacity VST3** GitHub Actions work
 C:\\Program Files\\Common Files\\VST3
 ```
 
-Restart Audacity 4, then open a track's **Effects** panel (or press `E`), choose **Add effect**, and select **Parrot Voice Tone**. Click the effect name to open its parameter window. Audacity displays the plug-in's eight editable parameters in its generic VST3 settings window, so you can move the sliders while playback continues. The track's original waveform remains unchanged.
+Restart Audacity 4, then open a track's **Effects** panel (or press `E`), choose **Add effect**, and select **Parrot Voice Tone**. Click the effect name to open its parameter window. Audacity displays the plug-in's seven editable parameters in its generic VST3 settings window, so you can move the sliders while playback continues. The track's original waveform remains unchanged.
 
 ### Manual controls
 
 | Control | Range | What it changes |
 |---|---:|---|
 | Parrot Amount | 0–100% | Blends the processed parrot voice with the untouched human recording |
-| Pitch Lift | 100–160% | Raises pitch; 100% leaves the pitch unchanged |
 | Nasal Resonance | 0–100% | Adds nasal vocal-tract character |
 | Beak Resonance | 0–100% | Adds a forward, sharper resonance |
 | Brightness | 0–100% | Adds upper-frequency presence |
@@ -108,7 +107,7 @@ Restart Audacity 4, then open a track's **Effects** panel (or press `E`), choose
 | Roughness | 0–100% | Adds rasp and harmonic texture |
 | Vocal Flutter | 0–100% | Adds periodic vocal movement; keep this low for natural speech |
 
-The new defaults are deliberately gentle to avoid the robotic sound of the previous 1.8× pitch and aggressive resonances: Parrot Amount 55%, Pitch Lift 106%, Nasal 25%, Beak 15%, Brightness 15%, Voice Body 35%, Roughness 3% and Flutter 1%. For an even more natural starting point, set Pitch Lift to 100%, Parrot Amount to 40–50%, and Flutter/Roughness to 0%.
+The VST3 restores the earlier v0.3.2 processing character: no pitch shifter, no added waveshaper and no aggressive grain stage. The five original controls keep their earlier defaults (Parrot Amount 50%, Nasal 45%, Brightness 25%, Roughness 12%, Flutter 8%). Beak Resonance and Voice Body are additional optional sliders and both start at 0%, so they do not change the old sound unless you raise them.
 
 The VST3 accepts mono or stereo tracks and both 32-bit and 64-bit audio buffers. The Minecraft mod retains its own settings in `voice-filters.properties`; the controls have the same intent, but the VST3 and mod are not guaranteed to be bit-identical.
 

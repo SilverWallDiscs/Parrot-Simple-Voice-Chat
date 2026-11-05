@@ -24,7 +24,7 @@ jobs:
       - name: Attach Parrot Voice Tone target to SDK build
         shell: pwsh
         run: |
-          $pluginPath = (Resolve-Path audacity-vst3).Path.Replace('\\', '/')
+          $pluginPath = (Resolve-Path audacity-vst3).Path -replace '\\', '/'
           $cmakeLine = 'add_subdirectory("' + $pluginPath + '" parrot-voice-tone)'
           Add-Content -Path vst3sdk/CMakeLists.txt -Value $cmakeLine
       - name: Configure VST3

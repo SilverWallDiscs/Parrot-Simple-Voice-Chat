@@ -25,7 +25,8 @@ jobs:
         shell: pwsh
         run: |
           $pluginPath = (Resolve-Path audacity-vst3).Path.Replace('\\', '/')
-          Add-Content -Path vst3sdk/CMakeLists.txt -Value "`nadd_subdirectory(\"$pluginPath\" parrot-voice-tone)"
+          $cmakeLine = 'add_subdirectory("' + $pluginPath + '" parrot-voice-tone)'
+          Add-Content -Path vst3sdk/CMakeLists.txt -Value $cmakeLine
       - name: Configure VST3
         run: cmake -S vst3sdk -B build-vst3 -A x64 -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF -DSMTG_CREATE_PLUGIN_LINK=OFF
       - name: Build VST3

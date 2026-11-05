@@ -83,6 +83,22 @@ The repository includes `audacity/ParrotVoiceTone.ny`, a Nyquist effect with the
 
 Nyquist effects process the selected audio offline; they are not live microphone filters. Audacity's Nyquist EQ uses its own filter implementation, so the preview is intended to match the mod's controls and general character rather than guarantee bit-identical output.
 
+## Audacity 4 real-time voice effect
+
+For live adjustment while playing a track, use the native VST3 version in `audacity-vst3/`. The Nyquist script in `audacity/ParrotVoiceTone.ny` is an offline effect and does not appear in Audacity's real-time effects list.
+
+The Windows x64 VST3 is built by the **Build Audacity VST3** GitHub Actions workflow. Download the `ParrotVoiceTone-win-x64` artifact from a successful workflow run, extract it, and copy the complete `ParrotVoiceTone.vst3` folder to:
+
+```text
+C:\\Program Files\\Common Files\\VST3
+```
+
+Restart Audacity 4, then open a track's **Effects** panel (or press `E`), choose **Add effect**, and select **Parrot Voice Tone**. Adjust the five controls while the track plays. The track's original waveform remains unchanged.
+
+The VST3 preview processes the parrot timbre filters in real time. The mod additionally applies its existing 1.8× pitch treatment before those filters; pitch shifting is not included in this first real-time Audacity VST3 build. The five timbre controls and their defaults are matched between the VST3 and the mod.
+
+Audacity's real-time track effects process playback of a recorded track. They do not act as a live microphone monitor while recording.
+
 ## Build
 
 Requires Java 21, Gradle 8.12+, Minecraft 1.21.1 and Fabric. Vosk Java and JNA are included as nested dependencies. The model itself is downloaded from the official Vosk model host on first startup.

@@ -27,6 +27,9 @@ constexpr double kDefaultRoughness = 38.0;
 constexpr double kDefaultFlutter = 28.0;
 constexpr double kFlutterHz = 5.8;
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kPitchRatio = 1.8;
+constexpr int32 kPitchDelaySamples = 1024;
+constexpr int32 kPitchBufferSize = 2048;
 constexpr int32 kMaximumChannels = 64;
 
 double clamp01(double value) {
@@ -101,6 +104,10 @@ struct ChannelState {
     Biquad nasalEdge;
     Biquad formantPeak;
     Biquad beakBrightness;
+    std::array<double, kPitchBufferSize> pitchBuffer {};
+    int32 pitchWritePosition {0};
+    double pitchPhaseA {0.0};
+    double pitchPhaseB {0.5};
     double flutterPhase {0.0};
 
     void reset() {
@@ -111,6 +118,10 @@ struct ChannelState {
         nasalEdge.reset();
         formantPeak.reset();
         beakBrightness.reset();
+        pitchBuffer.fill(0.0);
+        pitchWritePosition = 0;
+        pitchPhaseA = 0.0;
+        pitchPhaseB = 0.5;
         flutterPhase = 0.0;
     }
 };
@@ -186,6 +197,11 @@ public:
             channel.reset();
         }
         return kResultOk;
+    }
+
+    // The dual-head pitch shifter has an average delay of about half its delay span.
+    uint32 PLUGIN_API getLatencySamples() SMTG_OVERRIDE {
+        return static_cast<uint32>(kPitchDelaySamples / 2);
     }
 
     tresult PLUGIN_API canProcessSampleSize(int32 symbolicSampleSize) SMTG_OVERRIDE {
@@ -283,6 +299,40 @@ private:
         }
     }
 
+    double pitchUp(double input, ChannelState& state) {
+        // Two overlapping delay taps read faster than the write head. Their
+        // cosine windows crossfade at the delay wrap, raising pitch without
+        // changing the duration of the recorded phrase.
+        state.pitchBuffer[state.pitchWritePosition] = input;
+        const double phaseStep = (kPitchRatio - 1.0) / (kPitchDelaySamples - 4.0);
+        double sum = 0.0;
+        double weightSum = 0.0;
+
+        for (int head = 0; head < 2; ++head) {
+            double& phase = head == 0 ? state.pitchPhaseA : state.pitchPhaseB;
+            const double delay = 4.0 + (1.0 - phase) * (kPitchDelaySamples - 4.0);
+            double readPosition = state.pitchWritePosition - delay;
+            while (readPosition < 0.0) readPosition += kPitchBufferSize;
+            while (readPosition >= kPitchBufferSize) readPosition -= kPitchBufferSize;
+
+            const int32 indexA = static_cast<int32>(readPosition);
+            const int32 indexB = (indexA + 1) % kPitchBufferSize;
+            const double fraction = readPosition - indexA;
+            const double delayed = state.pitchBuffer[indexA]
+                + (state.pitchBuffer[indexB] - state.pitchBuffer[indexA]) * fraction;
+            const double window = 0.5 - 0.5 * std::cos(2.0 * kPi * phase);
+
+            sum += delayed * window;
+            weightSum += window;
+
+            phase += phaseStep;
+            if (phase >= 1.0) phase -= 1.0;
+        }
+
+        state.pitchWritePosition = (state.pitchWritePosition + 1) % kPitchBufferSize;
+        return weightSum > 1.0e-9 ? sum / weightSum : input;
+    }
+
     template <typename Sample>
     void processChannel(const Sample* input, Sample* output, int32 samples, ChannelState& state) {
         const double levels = 1024.0 - 768.0 * roughness_;
@@ -293,7 +343,8 @@ private:
         for (int32 i = 0; i < samples; ++i) {
             const double dry = std::isfinite(static_cast<double>(input[i]))
                 ? static_cast<double>(input[i]) : 0.0;
-            double wet = state.highPass.process(dry);
+            const double pitched = pitchUp(dry, state);
+            double wet = state.highPass.process(pitched);
             wet = state.chestCut.process(wet);
             wet = state.nasalBody.process(wet);
             wet = state.nasalEdge.process(wet);
@@ -316,7 +367,7 @@ private:
                 state.flutterPhase -= 2.0 * kPi;
             }
 
-            double result = dry + (wet - dry) * mix_;
+            double result = pitched + (wet - pitched) * mix_;
             const double magnitude = std::abs(result);
             if (magnitude > 0.97) {
                 result = std::copysign(0.97 + 0.03 * std::tanh((magnitude - 0.97) / 0.03), result);
@@ -348,7 +399,7 @@ DEF_CLASS2(INLINE_UID(0xB91D37A2, 0x4A2F4F9D, 0x8E1B6C50, 0xD2E7A491),
            "Parrot Voice Tone",
            0,
            "Fx",
-           "0.3.2",
+           "0.3.3",
            kVstVersionString,
            ParrotVoiceTone::createInstance)
 

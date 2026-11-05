@@ -25,6 +25,7 @@ constexpr double kDefaultBrightness = 25.0;
 constexpr double kDefaultRoughness = 12.0;
 constexpr double kDefaultFlutter = 8.0;
 constexpr double kFlutterHz = 5.5;
+constexpr double kPi = 3.14159265358979323846;
 constexpr int32 kMaximumChannels = 64;
 
 double clamp01(double value) {
@@ -38,7 +39,7 @@ public:
     }
 
     void highPass(double sampleRate, double frequency, double q) {
-        const double omega = 2.0 * M_PI * frequency / sampleRate;
+        const double omega = 2.0 * kPi * frequency / sampleRate;
         const double cosine = std::cos(omega);
         const double alpha = std::sin(omega) / (2.0 * q);
         const double a0 = 1.0 + alpha;
@@ -48,7 +49,7 @@ public:
     }
 
     void lowPass(double sampleRate, double frequency, double q) {
-        const double omega = 2.0 * M_PI * frequency / sampleRate;
+        const double omega = 2.0 * kPi * frequency / sampleRate;
         const double cosine = std::cos(omega);
         const double alpha = std::sin(omega) / (2.0 * q);
         const double a0 = 1.0 + alpha;
@@ -59,7 +60,7 @@ public:
 
     void peaking(double sampleRate, double frequency, double q, double gainDb) {
         const double a = std::pow(10.0, gainDb / 40.0);
-        const double omega = 2.0 * M_PI * frequency / sampleRate;
+        const double omega = 2.0 * kPi * frequency / sampleRate;
         const double cosine = std::cos(omega);
         const double alpha = std::sin(omega) / (2.0 * q);
         const double a0 = 1.0 + alpha / a;
@@ -177,7 +178,7 @@ public:
         float** inputs = data.inputs[0].channelBuffers32;
         float** outputs = data.outputs[0].channelBuffers32;
 
-        configureFilters();
+        configureFilters(channelCount);
 
         for (int32 channel = 0; channel < channelCount; ++channel) {
             if (channel >= kMaximumChannels || inputs[channel] == nullptr || outputs[channel] == nullptr) {
@@ -223,8 +224,10 @@ private:
         }
     }
 
-    void configureFilters() {
-        for (auto& channel : channels_) {
+    void configureFilters(int32 channelCount) {
+        const int32 count = std::min(channelCount, kMaximumChannels);
+        for (int32 index = 0; index < count; ++index) {
+            auto& channel = channels_[index];
             channel.highPass.highPass(sampleRate_, 150.0, 0.707);
             channel.lowPass.lowPass(sampleRate_, 7200.0, 0.707);
             channel.chestCut.peaking(sampleRate_, 620.0, 1.1, -0.8 * nasal_);
@@ -238,7 +241,7 @@ private:
         const double levels = 2048.0 - 1536.0 * roughness_;
         const double grainMix = 0.16 * roughness_;
         const double flutterDepth = 0.035 * flutter_;
-        const double phaseStep = 2.0 * M_PI * kFlutterHz / sampleRate_;
+        const double phaseStep = 2.0 * kPi * kFlutterHz / sampleRate_;
 
         for (int32 i = 0; i < samples; ++i) {
             const double dry = std::isfinite(input[i]) ? input[i] : 0.0;
@@ -254,8 +257,8 @@ private:
 
             wet *= 1.0 + std::sin(state.flutterPhase) * flutterDepth;
             state.flutterPhase += phaseStep;
-            if (state.flutterPhase >= 2.0 * M_PI) {
-                state.flutterPhase -= 2.0 * M_PI;
+            if (state.flutterPhase >= 2.0 * kPi) {
+                state.flutterPhase -= 2.0 * kPi;
             }
 
             double result = dry + (wet - dry) * mix_;

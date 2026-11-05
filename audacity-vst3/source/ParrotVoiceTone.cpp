@@ -20,12 +20,12 @@ enum ParameterId : ParamID {
     kFlutter = 4
 };
 
-constexpr double kDefaultMix = 50.0;
-constexpr double kDefaultNasal = 45.0;
-constexpr double kDefaultBrightness = 25.0;
-constexpr double kDefaultRoughness = 12.0;
-constexpr double kDefaultFlutter = 8.0;
-constexpr double kFlutterHz = 5.5;
+constexpr double kDefaultMix = 85.0;
+constexpr double kDefaultNasal = 75.0;
+constexpr double kDefaultBrightness = 60.0;
+constexpr double kDefaultRoughness = 38.0;
+constexpr double kDefaultFlutter = 28.0;
+constexpr double kFlutterHz = 5.8;
 constexpr double kPi = 3.14159265358979323846;
 constexpr int32 kMaximumChannels = 64;
 
@@ -99,6 +99,7 @@ struct ChannelState {
     Biquad chestCut;
     Biquad nasalBody;
     Biquad nasalEdge;
+    Biquad formantPeak;
     Biquad beakBrightness;
     double flutterPhase {0.0};
 
@@ -108,6 +109,7 @@ struct ChannelState {
         chestCut.reset();
         nasalBody.reset();
         nasalEdge.reset();
+        formantPeak.reset();
         beakBrightness.reset();
         flutterPhase = 0.0;
     }
@@ -148,12 +150,38 @@ public:
         return kResultOk;
     }
 
+    // Audacity voice recordings are commonly mono. Accept both mono and stereo
+    // instead of advertising a stereo-only bus that can leave a mono track untreated.
+    tresult PLUGIN_API setBusArrangements(SpeakerArrangement* inputs, int32 numIns,
+                                           SpeakerArrangement* outputs, int32 numOuts) SMTG_OVERRIDE {
+        if (numIns != 1 || numOuts != 1) {
+            return kResultFalse;
+        }
+
+        const int32 inputCount = SpeakerArr::getChannelCount(inputs[0]);
+        const int32 outputCount = SpeakerArr::getChannelCount(outputs[0]);
+        if (inputCount != outputCount || (inputCount != 1 && inputCount != 2)) {
+            return kResultFalse;
+        }
+
+        auto* inputBus = getAudioInput(0);
+        auto* outputBus = getAudioOutput(0);
+        if (!inputBus || !outputBus) {
+            return kResultFalse;
+        }
+
+        inputBus->setArrangement(inputs[0]);
+        outputBus->setArrangement(outputs[0]);
+        return kResultOk;
+    }
+
     tresult PLUGIN_API setupProcessing(ProcessSetup& setup) SMTG_OVERRIDE {
         const tresult result = SingleComponentEffect::setupProcessing(setup);
         if (result != kResultOk) {
             return result;
         }
         sampleRate_ = setup.sampleRate > 1000.0 ? setup.sampleRate : 48000.0;
+        sampleSize_ = setup.symbolicSampleSize;
         for (auto& channel : channels_) {
             channel.reset();
         }
@@ -161,44 +189,59 @@ public:
     }
 
     tresult PLUGIN_API canProcessSampleSize(int32 symbolicSampleSize) SMTG_OVERRIDE {
-        return symbolicSampleSize == kSample32 ? kResultTrue : kResultFalse;
+        return (symbolicSampleSize == kSample32 || symbolicSampleSize == kSample64)
+            ? kResultTrue : kResultFalse;
     }
 
     tresult PLUGIN_API process(ProcessData& data) SMTG_OVERRIDE {
-        if (data.numInputs < 1 || data.numOutputs < 1 || data.numSamples <= 0
-            || data.inputs[0].channelBuffers32 == nullptr
-            || data.outputs[0].channelBuffers32 == nullptr) {
+        if (data.numInputs < 1 || data.numOutputs < 1 || data.numSamples <= 0) {
             return kResultOk;
         }
 
         readParameters(data.inputParameterChanges);
 
-        const int32 inputChannels = data.inputs[0].numChannels;
-        const int32 outputChannels = data.outputs[0].numChannels;
-        const int32 channelCount = std::min(inputChannels, outputChannels);
-        float** inputs = data.inputs[0].channelBuffers32;
-        float** outputs = data.outputs[0].channelBuffers32;
+        if (sampleSize_ == kSample64) {
+            if (data.inputs[0].channelBuffers64 == nullptr
+                || data.outputs[0].channelBuffers64 == nullptr) {
+                return kResultOk;
+            }
+            processBuffers(data.inputs[0].channelBuffers64, data.outputs[0].channelBuffers64,
+                           data.inputs[0].numChannels, data.outputs[0].numChannels, data.numSamples);
+        } else {
+            if (data.inputs[0].channelBuffers32 == nullptr
+                || data.outputs[0].channelBuffers32 == nullptr) {
+                return kResultOk;
+            }
+            processBuffers(data.inputs[0].channelBuffers32, data.outputs[0].channelBuffers32,
+                           data.inputs[0].numChannels, data.outputs[0].numChannels, data.numSamples);
+        }
 
+        return kResultOk;
+    }
+
+private:
+    template <typename Sample>
+    void processBuffers(Sample** inputs, Sample** outputs, int32 inputChannels,
+                        int32 outputChannels, int32 sampleCount) {
+        const int32 channelCount = std::min(inputChannels, outputChannels);
         configureFilters(channelCount);
 
         for (int32 channel = 0; channel < channelCount; ++channel) {
             if (channel >= kMaximumChannels || inputs[channel] == nullptr || outputs[channel] == nullptr) {
                 continue;
             }
-            processChannel(inputs[channel], outputs[channel], data.numSamples, channels_[channel]);
+            processChannel(inputs[channel], outputs[channel], sampleCount, channels_[channel]);
         }
 
         for (int32 channel = channelCount; channel < outputChannels; ++channel) {
             if (outputs[channel] != nullptr) {
-                std::fill(outputs[channel], outputs[channel] + data.numSamples, 0.0f);
+                std::fill(outputs[channel], outputs[channel] + sampleCount, static_cast<Sample>(0));
             }
         }
 
-        data.outputs[0].silenceFlags = 0;
-        return kResultOk;
+        dataSilenceReset_ = false;
     }
 
-private:
     void readParameters(IParameterChanges* changes) {
         if (!changes) {
             return;
@@ -229,29 +272,41 @@ private:
         const int32 count = std::min(channelCount, kMaximumChannels);
         for (int32 index = 0; index < count; ++index) {
             auto& channel = channels_[index];
-            channel.highPass.highPass(sampleRate_, 150.0, 0.707);
-            channel.lowPass.lowPass(sampleRate_, 7200.0, 0.707);
-            channel.chestCut.peaking(sampleRate_, 620.0, 1.1, -0.8 * nasal_);
-            channel.nasalBody.peaking(sampleRate_, 1350.0, 1.1, 3.0 * nasal_);
-            channel.nasalEdge.peaking(sampleRate_, 2450.0, 1.0, 3.5 * nasal_);
-            channel.beakBrightness.peaking(sampleRate_, 3800.0, 0.9, 3.0 * brightness_);
+            channel.highPass.highPass(sampleRate_, 170.0, 0.707);
+            channel.lowPass.lowPass(sampleRate_, 8800.0, 0.707);
+            // Stronger, broad vocal-tract resonances: a nasal body, a forward
+            // beak resonance and an upper "ring" that remain speech-shaped.
+            channel.chestCut.peaking(sampleRate_, 500.0, 1.0, -5.5 * nasal_);
+            channel.nasalBody.peaking(sampleRate_, 1200.0, 1.25, 8.0 * nasal_);
+            channel.nasalEdge.peaking(sampleRate_, 2450.0, 1.15, 9.0 * nasal_);
+            channel.formantPeak.peaking(sampleRate_, 3400.0, 1.3, 6.0 * nasal_);
+            channel.beakBrightness.peaking(sampleRate_, 4300.0, 1.0, 8.0 * brightness_);
         }
     }
 
-    void processChannel(const float* input, float* output, int32 samples, ChannelState& state) {
-        const double levels = 2048.0 - 1536.0 * roughness_;
-        const double grainMix = 0.16 * roughness_;
-        const double flutterDepth = 0.035 * flutter_;
+    template <typename Sample>
+    void processChannel(const Sample* input, Sample* output, int32 samples, ChannelState& state) {
+        const double levels = 1024.0 - 768.0 * roughness_;
+        const double grainMix = 0.45 * roughness_;
+        const double flutterDepth = 0.12 * flutter_;
         const double phaseStep = 2.0 * kPi * kFlutterHz / sampleRate_;
 
         for (int32 i = 0; i < samples; ++i) {
-            const double dry = std::isfinite(input[i]) ? input[i] : 0.0;
+            const double dry = std::isfinite(static_cast<double>(input[i]))
+                ? static_cast<double>(input[i]) : 0.0;
             double wet = state.highPass.process(dry);
             wet = state.chestCut.process(wet);
             wet = state.nasalBody.process(wet);
             wet = state.nasalEdge.process(wet);
+            wet = state.formantPeak.process(wet);
             wet = state.beakBrightness.process(wet);
             wet = state.lowPass.process(wet);
+
+            // A restrained asymmetric waveshaper adds upper harmonics that make
+            // the voice less like a clean EQ and more like a raspy bird vocalization.
+            const double asymmetry = 0.035 * roughness_;
+            wet += asymmetry * wet * std::abs(wet);
+            wet -= 0.24 * roughness_ * wet * wet * wet;
 
             const double quantized = std::round(wet * levels) / levels;
             wet += (quantized - wet) * grainMix;
@@ -263,16 +318,17 @@ private:
             }
 
             double result = dry + (wet - dry) * mix_;
-            // A very gentle safety soft-clipper prevents overs on resonant material.
             const double magnitude = std::abs(result);
-            if (magnitude > 0.985) {
-                result = std::copysign(0.985 + 0.015 * std::tanh((magnitude - 0.985) / 0.015), result);
+            if (magnitude > 0.97) {
+                result = std::copysign(0.97 + 0.03 * std::tanh((magnitude - 0.97) / 0.03), result);
             }
-            output[i] = static_cast<float>(result);
+            output[i] = static_cast<Sample>(result);
         }
     }
 
     double sampleRate_ {48000.0};
+    int32 sampleSize_ {kSample32};
+    bool dataSilenceReset_ {false};
     double mix_ {kDefaultMix / 100.0};
     double nasal_ {kDefaultNasal / 100.0};
     double brightness_ {kDefaultBrightness / 100.0};

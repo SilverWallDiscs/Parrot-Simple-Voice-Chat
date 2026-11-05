@@ -255,6 +255,7 @@ public:
                            data.inputs[0].numChannels, data.outputs[0].numChannels, data.numSamples);
         }
 
+        data.outputs[0].silenceFlags = 0;
         return kResultOk;
     }
 
@@ -295,7 +296,6 @@ private:
                 continue;
             }
             const double normalized = clamp01(value);
-            const double plain = normalized * 100.0;
             switch (queue->getParameterId()) {
                 case kMix: mix_ = normalized; break;
                 case kPitch:

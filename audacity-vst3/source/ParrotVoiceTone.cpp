@@ -1,5 +1,6 @@
 #include "public.sdk/source/main/pluginfactory.h"
-#include "public.sdk/source/vst/vstsinglecomponenteffect.h"
+#include "public.sdk/source/vst/vstaudioeffect.h"
+#include "public.sdk/source/vst/vsteditcontroller.h"
 #include "pluginterfaces/base/ustring.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 
@@ -33,6 +34,7 @@ constexpr double kDefaultBody = 0.0;
 constexpr double kFlutterHz = 5.5;
 constexpr double kPi = 3.14159265358979323846;
 constexpr int32 kMaximumChannels = 64;
+const FUID kControllerUID(0xB91D37A3, 0x4A2F4F9D, 0x8E1B6C50, 0xD2E7A491);
 
 double clamp01(double value) {
     return std::max(0.0, std::min(1.0, value));
@@ -123,14 +125,36 @@ struct ChannelState {
 };
 } // namespace
 
-class ParrotVoiceTone final : public SingleComponentEffect {
+// Audacity creates the processor and edit controller as separate VST3
+// instances. Keeping them separate is required for Audacity's parameter UI.
+class ParrotVoiceToneController final : public EditController {
+public:
+    static FUnknown* createInstance(void*) {
+        return static_cast<IEditController*>(new ParrotVoiceToneController());
+    }
+
+    tresult PLUGIN_API initialize(FUnknown* context) SMTG_OVERRIDE {
+        const tresult result = EditController::initialize(context);
+        if (result != kResultOk) {
+            return result;
+        }
+
+        return kResultOk;
+    }
+};
+
+class ParrotVoiceTone final : public AudioEffect {
+public:
+    ParrotVoiceTone() {
+        setControllerClass(kControllerUID);
+    }
 public:
     static FUnknown* createInstance(void*) {
         return static_cast<IAudioProcessor*>(new ParrotVoiceTone());
     }
 
     tresult PLUGIN_API initialize(FUnknown* context) SMTG_OVERRIDE {
-        const tresult result = SingleComponentEffect::initialize(context);
+        const tresult result = AudioEffect::initialize(context);
         if (result != kResultOk) {
             return result;
         }
@@ -189,7 +213,7 @@ public:
     }
 
     tresult PLUGIN_API setupProcessing(ProcessSetup& setup) SMTG_OVERRIDE {
-        const tresult result = SingleComponentEffect::setupProcessing(setup);
+        const tresult result = AudioEffect::setupProcessing(setup);
         if (result != kResultOk) {
             return result;
         }
@@ -360,8 +384,18 @@ DEF_CLASS2(INLINE_UID(0xB91D37A2, 0x4A2F4F9D, 0x8E1B6C50, 0xD2E7A491),
            "Parrot Voice Tone",
            0,
            "Fx",
-           "0.3.5",
+           "0.3.6",
            kVstVersionString,
            ParrotVoiceTone::createInstance)
+
+DEF_CLASS2(INLINE_UID(0xB91D37A3, 0x4A2F4F9D, 0x8E1B6C50, 0xD2E7A491),
+           PClassInfo::kManyInstances,
+           kVstComponentControllerClass,
+           "Parrot Voice Tone Controller",
+           0,
+           "",
+           "0.3.6",
+           kVstVersionString,
+           ParrotVoiceToneController::createInstance)
 
 END_FACTORY

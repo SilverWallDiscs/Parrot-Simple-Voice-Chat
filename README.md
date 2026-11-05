@@ -93,9 +93,24 @@ The Windows x64 VST3 is built by the **Build Audacity VST3** GitHub Actions work
 C:\\Program Files\\Common Files\\VST3
 ```
 
-Restart Audacity 4, then open a track's **Effects** panel (or press `E`), choose **Add effect**, and select **Parrot Voice Tone**. Adjust the five controls while the track plays. The track's original waveform remains unchanged.
+Restart Audacity 4, then open a track's **Effects** panel (or press `E`), choose **Add effect**, and select **Parrot Voice Tone**. Click the effect name to open its parameter window. Audacity displays the plug-in's eight editable parameters in its generic VST3 settings window, so you can move the sliders while playback continues. The track's original waveform remains unchanged.
 
-The VST3 preview applies a real-time 1.8× pitch shift and the parrot-timbre filter chain while the track plays. It accepts mono or stereo tracks and both 32-bit and 64-bit audio buffers. Its starting preset is intentionally stronger so the change is clearly audible: mix 85, nasal 75, brightness 60, roughness 38 and flutter 28. The Minecraft mod still has its own default values in `voice-filters.properties`; the controls have the same meanings, but the two implementations are not yet bit-identical.
+### Manual controls
+
+| Control | Range | What it changes |
+|---|---:|---|
+| Parrot Amount | 0–100% | Blends the processed parrot voice with the untouched human recording |
+| Pitch Lift | 100–160% | Raises pitch; 100% leaves the pitch unchanged |
+| Nasal Resonance | 0–100% | Adds nasal vocal-tract character |
+| Beak Resonance | 0–100% | Adds a forward, sharper resonance |
+| Brightness | 0–100% | Adds upper-frequency presence |
+| Voice Body | 0–100% | Restores or strengthens the lower vocal body |
+| Roughness | 0–100% | Adds rasp and harmonic texture |
+| Vocal Flutter | 0–100% | Adds periodic vocal movement; keep this low for natural speech |
+
+The new defaults are deliberately gentle to avoid the robotic sound of the previous 1.8× pitch and aggressive resonances: Parrot Amount 55%, Pitch Lift 106%, Nasal 25%, Beak 15%, Brightness 15%, Voice Body 35%, Roughness 3% and Flutter 1%. For an even more natural starting point, set Pitch Lift to 100%, Parrot Amount to 40–50%, and Flutter/Roughness to 0%.
+
+The VST3 accepts mono or stereo tracks and both 32-bit and 64-bit audio buffers. The Minecraft mod retains its own settings in `voice-filters.properties`; the controls have the same intent, but the VST3 and mod are not guaranteed to be bit-identical.
 
 Audacity's real-time track effects process playback of a recorded track. They do not act as a live microphone monitor while recording.
 
